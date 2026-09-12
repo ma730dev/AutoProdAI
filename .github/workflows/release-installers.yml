@@ -157,7 +157,11 @@ jobs:
 
       - name: Generar Instalador .DMG
         run: |
-          hdiutil create -volname "AutoProd AI Motor" -srcfolder dist/AutoProdAI-macOS -ov -format UDZO dist/AutoProd-Setup.dmg
+          # Crear imagen temporal con tamaño holgado (2500 MB) para alojar el binario completo y convertirla a UDZO comprimido
+          hdiutil create -volname "AutoProd AI Motor" -srcfolder dist/AutoProdAI-macOS -ov -format UDRW -size 2500m dist/temp.dmg
+          hdiutil convert dist/temp.dmg -format UDZO -o dist/AutoProd-Setup.dmg
+          rm -f dist/temp.dmg
+          ls -lh dist/AutoProd-Setup.dmg
 
       - name: Subir Artefacto de macOS
         uses: actions/upload-artifact@v4
