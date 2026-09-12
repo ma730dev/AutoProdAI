@@ -101,10 +101,62 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Ejecutar Compilador Oficial macOS
+      - name: Instalar Dependencias y PyInstaller
         run: |
-          chmod +x scripts/build/build-macos.sh
-          bash scripts/build/build-macos.sh
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller -r controlador/requirements.txt
+
+      - name: Compilar Motor Local con PyInstaller
+        working-directory: controlador
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile \
+            --name "autoprod-motor" \
+            --collect-all uvicorn \
+            --collect-all fastapi \
+            --collect-all pydantic \
+            --collect-all requests \
+            --collect-all faster_whisper \
+            --collect-all ctranslate2 \
+            --collect-all edge_tts \
+            --hidden-import "routers.workspace" \
+            --hidden-import "routers.chat" \
+            --hidden-import "routers.video_looper" \
+            --hidden-import "routers.subtitles" \
+            --hidden-import "routers.tts" \
+            --hidden-import "hardware" \
+            --hidden-import "hardware.governor" \
+            main.py
+
+      - name: Preparar Paquete y Binarios (macOS)
+        run: |
+          mkdir -p dist bin dist/AutoProdAI-macOS/bin dist/AutoProdAI-macOS/workspace
+          cp controlador/dist/autoprod-motor dist/autoprod-motor
+          chmod +x dist/autoprod-motor
+          cp dist/autoprod-motor dist/AutoProdAI-macOS/
+
+          # Descargar yt-dlp
+          curl -sL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" -o bin/yt-dlp || true
+          chmod +x bin/yt-dlp 2>/dev/null || true
+          cp bin/yt-dlp dist/AutoProdAI-macOS/bin/ 2>/dev/null || true
+
+          # Instalar ffmpeg vía Homebrew en el runner macOS
+          brew install ffmpeg || true
+          cp $(which ffmpeg) dist/AutoProdAI-macOS/bin/ 2>/dev/null || true
+          cp $(which ffprobe) dist/AutoProdAI-macOS/bin/ 2>/dev/null || true
+
+          # Script de arranque
+          cat <<'EOF' > dist/AutoProdAI-macOS/start_motor.sh
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$DIR"
+export PATH="$DIR/bin:$PATH"
+./autoprod-motor
+EOF
+          chmod +x dist/AutoProdAI-macOS/start_motor.sh
+
+      - name: Generar Instalador .DMG
+        run: |
+          hdiutil create -volname "AutoProd AI Motor" -srcfolder dist/AutoProdAI-macOS -ov -format UDZO dist/AutoProd-Setup.dmg
 
       - name: Subir Artefacto de macOS
         uses: actions/upload-artifact@v4
