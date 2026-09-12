@@ -51,7 +51,6 @@ jobs:
             --hidden-import "routers.subtitles" `
             --hidden-import "routers.tts" `
             --hidden-import "hardware" `
-            --hidden-import "hardware.governor" `
             main.py
 
       - name: Preparar Directorio dist/ y bin/
@@ -59,6 +58,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist
           New-Item -ItemType Directory -Force -Path bin
           Copy-Item controlador/dist/autoprod-motor.exe dist/autoprod-motor.exe
+          Remove-Item -Recurse -Force controlador/build -ErrorAction SilentlyContinue
 
       - name: Descargar Binarios Portables (FFmpeg y yt-dlp)
         shell: pwsh
@@ -124,7 +124,6 @@ jobs:
             --hidden-import "routers.subtitles" \
             --hidden-import "routers.tts" \
             --hidden-import "hardware" \
-            --hidden-import "hardware.governor" \
             main.py
 
       - name: Preparar Paquete y Binarios (macOS)
@@ -147,6 +146,14 @@ jobs:
           # Script de arranque
           printf '#!/bin/bash\nDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"\ncd "$DIR"\nexport PATH="$DIR/bin:$PATH"\n./autoprod-motor\n' > dist/AutoProdAI-macOS/start_motor.sh
           chmod +x dist/AutoProdAI-macOS/start_motor.sh
+
+      - name: Limpiar Espacio en Disco
+        run: |
+          rm -rf controlador/build
+          rm -rf controlador/.pyinstaller
+          rm -rf ~/Library/Caches/pip
+          rm -rf ~/Library/Caches/pyinstaller
+          brew cleanup --prune=all || true
 
       - name: Generar Instalador .DMG
         run: |
