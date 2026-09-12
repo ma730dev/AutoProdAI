@@ -145,13 +145,7 @@ jobs:
           cp $(which ffprobe) dist/AutoProdAI-macOS/bin/ 2>/dev/null || true
 
           # Script de arranque
-          cat <<'EOF' > dist/AutoProdAI-macOS/start_motor.sh
-#!/bin/bash
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$DIR"
-export PATH="$DIR/bin:$PATH"
-./autoprod-motor
-EOF
+          printf '#!/bin/bash\nDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"\ncd "$DIR"\nexport PATH="$DIR/bin:$PATH"\n./autoprod-motor\n' > dist/AutoProdAI-macOS/start_motor.sh
           chmod +x dist/AutoProdAI-macOS/start_motor.sh
 
       - name: Generar Instalador .DMG
