@@ -45,7 +45,7 @@ flowchart LR
   - Generador de desinstalador limpio en Panel de Control.
 - **macOS (`AutoProd-Setup.dmg`):** Empaquetador nativo en [`scripts/build/build-macos.sh`](file:///e:/autoprod/scripts/build/build-macos.sh) para distribución en imagen de disco DMG / paquete `.app`.
 - **Cero Terminales y Cero Código Expuesto:** El usuario final solo descarga un archivo `.exe` o `.dmg` y sigue el asistente visual en 1 clic.
-- **Endpoint de Entrega:** [`app/api/setup/download-installer/route.ts`](file:///e:/autoprod/app/api/setup/download-installer/route.ts) con redirección automática al CDN de GitHub Releases oficial (`MA73OOO/autoprod`) o entrega del instalador binario compilado local.
+- **Endpoint de Entrega:** [`app/api/setup/download-installer/route.ts`](file:///e:/autoprod/app/api/setup/download-installer/route.ts) con redirección automática al CDN de GitHub Releases oficial (`ma730dev/AutoProdAI`) o entrega del instalador binario compilado local.
 
 ---
 

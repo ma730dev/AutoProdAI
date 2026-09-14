@@ -72,10 +72,15 @@ export async function POST(req: NextRequest) {
     const { user } = auth;
 
     const body = await req.json();
-    const { imageBase64, userIntent } = body;
+    const { imageBase64, userIdea, userIntent, channelName, channelNiche, answers } = body;
 
-    if (!imageBase64) {
-      return NextResponse.json({ error: 'Se requiere la imagen de referencia (imageBase64)' }, { status: 400 });
+    const ideaText = (userIdea || userIntent || '').trim();
+
+    if (!imageBase64 && !ideaText) {
+      return NextResponse.json(
+        { error: 'Debes ingresar tu idea/temática o subir una imagen de referencia para que el asistente pueda ayudarte.' },
+        { status: 400 }
+      );
     }
 
     const { apiKey, isSystemKey } = await resolveOpenAiKey(user.id);
@@ -87,7 +92,7 @@ export async function POST(req: NextRequest) {
     });
     const userPlanName = userWithSub?.subscription?.plan?.name || 'FREE';
 
-    // Determinar créditos requeridos para análisis visual con gpt-4o-mini
+    // Determinar créditos requeridos para análisis con gpt-4o-mini
     let requiredCredits = 0;
     if (isSystemKey) {
       const isFree = isOrchestratorFreeForUser(userPlanName, 'gpt-4o-mini');
@@ -103,37 +108,82 @@ export async function POST(req: NextRequest) {
 
       if (wallet.balance < requiredCredits) {
         return NextResponse.json({
-          error: `Has agotado tus créditos de prueba gratuita. Para continuar analizando imágenes y usando AutoProd, suscríbete a un plan o añade créditos.`,
+          error: `Has agotado tus créditos de prueba gratuita. Para continuar analizando y creando imágenes, suscríbete a un plan o añade créditos.`,
           requiresUpgrade: true
         }, { status: 402 });
       }
     }
 
-    const formattedImage = imageBase64.startsWith('data:')
-      ? imageBase64
-      : `data:image/jpeg;base64,${imageBase64}`;
+    const systemPrompt = `Eres un Director de Arte y Co-pilot experto en Miniaturas de YouTube y Dirección Visual en AutoProd.
+Tu misión es guiar al creador para construir una miniatura o arte visual de máximo impacto (alto CTR, excelente composición, iluminación dramática y estética profesional).
 
-    const systemPrompt = `Eres un Director de Arte y Co-pilot experto en Miniaturas de YouTube y Dirección Visual para videos en AutoProd.
-Tu trabajo es analizar la imagen de referencia que el usuario subió y desglosarla para que juntos construyan la mejor miniatura o arte visual.
-
-Debes responder SIEMPRE en formato JSON estricto con las siguientes claves:
+Debes responder SIEMPRE en formato JSON estricto con la siguiente estructura:
 {
-  "style": "Descripción concisa del estilo artístico (ej. 3D Render Pixar, Anime Studio Ghibli, Hiperrealismo Cinematográfico, Ilustración Vectorial Plana, Cyberpunk Neón)",
-  "lighting": "Tipo de iluminación y atmósfera (ej. Luz dorada dramática de atardecer con contrastes altos, Luz volumétrica suave)",
-  "palette": "Paleta cromática dominante (ej. Tonos morados profundos, cian brillante y toques de amarillo neón)",
-  "composition": "Encuadre y composición visual (ej. Primer plano centrado con ángulo bajo y desenfoque de fondo bokeh)",
-  "summary": "Resumen técnico de 2-3 oraciones describiendo la imagen para el usuario.",
+  "summary": "Resumen conciso (2 oraciones) de la dirección de arte propuesta.",
+  "style": "Estilo visual recomendado (ej. Hiperrealismo cinematográfico 35mm, 3D Render Pixar/Disney, Cyberpunk oscuro, Fotografía documental, etc.)",
+  "lighting": "Iluminación y atmósfera (ej. Luz dorada de borde con sombras profundas, Iluminación volumétrica de neón, etc.)",
+  "palette": "Paleta cromática dominante (ej. Azul medianoche y ámbar contrastado, etc.)",
+  "composition": "Encuadre y composición (ej. Primer plano con ángulo bajo, regla de tercios y fondo desenfocado bokeh)",
   "suggestedQuestions": [
-    "Pregunta 1 directa y creativa para aterrizar el sujeto o personaje principal",
-    "Pregunta 2 sobre si desea adaptar los colores o el estilo a su canal específico",
-    "Pregunta 3 sobre la emoción central o el texto/gancho de miniatura"
+    {
+      "id": "q1",
+      "question": "Pregunta 1 directa y contextual para aterrizar la visión del creador",
+      "options": ["Opción A sugerida", "Opción B sugerida", "Opción C sugerida"]
+    },
+    {
+      "id": "q2",
+      "question": "Pregunta 2 sobre la emoción o el gancho visual clave",
+      "options": ["Opción A sugerida", "Opción B sugerida", "Opción C sugerida"]
+    }
   ],
-  "draftPrompt": "Un prompt en inglés ultra optimizado para DALL-E 3 que recrea este estilo artístico de base."
-}`;
+  "draftPrompt": "Un prompt maestro en inglés ultra optimizado para DALL-E 3 que plasma esta dirección de arte con especificaciones técnicas (lente, iluminación, render, encuadre)."
+}
 
-    const promptUser = userIntent
-      ? `El usuario tiene la siguiente intención preliminar: "${userIntent}". Analiza la imagen de referencia y formula las preguntas adecuadas teniendo esto en cuenta.`
-      : `Analiza detalladamente esta imagen de referencia y formula preguntas para ayudar al usuario a crear una miniatura o arte visual basado en ella.`;
+Reglas:
+- Si el usuario subió una imagen de referencia, analiza minuciosamente su estilo, iluminación y composición para trasladar esa vibra a su temática.
+- Si el usuario NO subió imagen, conceptualiza la mejor escena visual basándote en su idea y el nicho de su canal.
+- Si el usuario envió respuestas previas ("answers"), sintetízalas para perfeccionar el "draftPrompt" final y formula sugerencias de pulido o deja las preguntas vacías si ya está listo.
+- Las opciones en "suggestedQuestions" deben ser cortas (2 a 5 palabras), concretas y atractivas para que el usuario pueda hacer clic y decidir rápidamente.`;
+
+    let userPromptText = '';
+    if (channelName || channelNiche) {
+      userPromptText += `[Canal: ${channelName || 'Principal'}${channelNiche ? ` | Nicho: ${channelNiche}` : ''}]\n`;
+    }
+
+    if (ideaText) {
+      userPromptText += `[Idea / Concepto del Creador]: "${ideaText}"\n`;
+    }
+
+    if (imageBase64) {
+      userPromptText += `[Imagen de Referencia]: Se adjunta una imagen como inspiración visual de estilo/composición.\n`;
+    }
+
+    if (answers && Object.keys(answers).length > 0) {
+      userPromptText += `[Respuestas del Creador a las preguntas previas]:\n`;
+      Object.entries(answers).forEach(([key, val]) => {
+        if (val) userPromptText += `- ${key}: ${val}\n`;
+      });
+      userPromptText += `\nPor favor sintetiza estas decisiones en el "draftPrompt" final para DALL-E 3.`;
+    } else {
+      userPromptText += `\nAnaliza la propuesta y genera el diagnóstico estético, 2 preguntas dinámicas con opciones de 1-clic para el creador y el borrador inicial de prompt maestro.`;
+    }
+
+    let messageContent: any;
+    if (imageBase64) {
+      const formattedImage = imageBase64.startsWith('data:')
+        ? imageBase64
+        : `data:image/jpeg;base64,${imageBase64}`;
+
+      messageContent = [
+        { type: 'text', text: userPromptText },
+        {
+          type: 'image_url',
+          image_url: { url: formattedImage, detail: 'low' },
+        },
+      ];
+    } else {
+      messageContent = userPromptText;
+    }
 
     const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -147,17 +197,11 @@ Debes responder SIEMPRE en formato JSON estricto con las siguientes claves:
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: [
-              { type: 'text', text: promptUser },
-              {
-                type: 'image_url',
-                image_url: { url: formattedImage, detail: 'low' },
-              },
-            ],
+            content: messageContent,
           },
         ],
         response_format: { type: 'json_object' },
-        max_tokens: 1000,
+        max_tokens: 1200,
         temperature: 0.7,
       }),
     });
@@ -165,7 +209,7 @@ Debes responder SIEMPRE en formato JSON estricto con las siguientes claves:
     if (!openAiRes.ok) {
       const err = await openAiRes.json().catch(() => ({}));
       return NextResponse.json(
-        { error: err.error?.message || 'Error analizando la imagen con OpenAI' },
+        { error: err.error?.message || 'Error comunicándose con el asistente de OpenAI' },
         { status: 500 }
       );
     }
@@ -173,6 +217,24 @@ Debes responder SIEMPRE en formato JSON estricto con las siguientes claves:
     const openAiData = await openAiRes.json();
     const content = openAiData.choices?.[0]?.message?.content;
     const parsed = JSON.parse(content || '{}');
+
+    // Normalizar suggestedQuestions para soportar tanto objetos como strings
+    if (Array.isArray(parsed.suggestedQuestions)) {
+      parsed.suggestedQuestions = parsed.suggestedQuestions.map((q: any, idx: number) => {
+        if (typeof q === 'string') {
+          return {
+            id: `q${idx + 1}`,
+            question: q,
+            options: ['Enfoque cinematográfico', 'Enfoque dramático y oscuro', 'Enfoque brillante y vibrante']
+          };
+        }
+        return {
+          id: q.id || `q${idx + 1}`,
+          question: q.question || 'Pregunta de alineación',
+          options: Array.isArray(q.options) ? q.options : []
+        };
+      });
+    }
 
     // Descuento de créditos para usuarios FREE que usan la plataforma
     let newBalance: number | null = null;
@@ -188,8 +250,8 @@ Debes responder SIEMPRE en formato JSON estricto con las siguientes claves:
               walletId: wallet.id,
               creditsUsed: requiredCredits,
               serviceType: 'TOOL',
-              modelName: 'gpt-4o-mini-vision',
-              description: 'Análisis multimodal de imagen de referencia con GPT-4o-mini'
+              modelName: 'gpt-4o-mini',
+              description: 'Asistencia de dirección de arte e imágenes con GPT-4o-mini'
             }
           })
         ]);
@@ -205,7 +267,7 @@ Debes responder SIEMPRE en formato JSON estricto con las siguientes claves:
       newBalance
     });
   } catch (err: any) {
-    console.error('Error analyzing image:', err);
-    return NextResponse.json({ error: err.message || 'Error al analizar la imagen' }, { status: 500 });
+    console.error('Error in /api/images/analyze:', err);
+    return NextResponse.json({ error: err.message || 'Error al procesar la solicitud con el asistente' }, { status: 500 });
   }
 }

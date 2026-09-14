@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     const isMac = osParam === 'mac' || osParam === 'macos' || (!osParam && userAgent.includes('mac'));
 
     // 1. Streaming nativo desde GitHub Releases (oculta la URL del repositorio al usuario)
-    const githubRepo = process.env.GITHUB_REPO || 'MA73OOO/autoprod';
+    const githubRepo = process.env.GITHUB_REPO || 'ma730dev/AutoProdAI';
     const githubToken = process.env.GITHUB_TOKEN || process.env.GITHUB_RELEASE_TOKEN;
     const targetFileName = isMac ? 'AutoProd-Setup.dmg' : 'AutoProd-Setup.exe';
     const contentType = isMac ? 'application/x-apple-diskimage' : 'application/vnd.microsoft.portable-executable';
