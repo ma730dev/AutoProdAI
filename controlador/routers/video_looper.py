@@ -720,3 +720,426 @@ def get_preview_video(job_id: str):
         media_type="video/mp4",
         filename=file_path.name
     )
+
+# ──────────────────────────────────────────────
+# Modelos y Endpoint: Timeline Pro Multipista
+# ──────────────────────────────────────────────
+
+class TimelineCutItem(BaseModel):
+    clip_path: str
+    start_time: float = 0.0
+    end_time: Optional[float] = None
+    duration: Optional[float] = None
+    loop_to_duration: Optional[float] = None
+    is_reversed: bool = False
+
+class TimelineOverlayItem(BaseModel):
+    type: str  # 'subscribe_cta' | 'like_cta' | 'lower_third' | 'channel_logo' | 'custom_image' | 'text'
+    text: Optional[str] = None
+    path: Optional[str] = None
+    x_percent: float = 50.0
+    y_percent: float = 85.0
+    scale: float = 1.0
+    start_time: float = 0.0
+    duration: float = 5.0
+
+class TimelineAudioTrackItem(BaseModel):
+    id: Optional[str] = None
+    path: str
+    name: Optional[str] = None
+    start_time: float = 0.0
+    duration: Optional[float] = None
+    volume: float = 1.0
+
+class TimelineAudioConfig(BaseModel):
+    voice_audio_path: Optional[str] = None
+    music_audio_path: Optional[str] = None
+    music_tracks: Optional[List[TimelineAudioTrackItem]] = []
+    music_volume: float = 0.25
+    mute_video_audio: bool = False
+
+class RenderTimelineRequest(BaseModel):
+    cuts: List[TimelineCutItem]
+    overlays: Optional[List[TimelineOverlayItem]] = []
+    audio: Optional[TimelineAudioConfig] = None
+    subtitle_path: Optional[str] = None
+    resolution: str = "1080p"  # "1080p" | "4k" | "720p" | "vertical_shorts"
+    quality: str = "high"
+    aspect_ratio: str = "16:9" # "16:9" | "9:16"
+    output_folder_path: Optional[str] = None
+    output_filename: Optional[str] = "render_final.mp4"
+    is_preview: bool = False
+
+def run_timeline_render(job_id: str, req: RenderTimelineRequest):
+    """
+    Ejecuta el pipeline de renderizado multipista en una sola pasada de FFmpeg.
+    Soporta múltiples cortes/clips secuenciales (Multi-Clip Concat), trimming in/out,
+    normalización de resolución y aspect ratio, capas de texto/overlays y mezcla de audio.
+    """
+    try:
+        ffmpeg_bin = get_ffmpeg_path()
+        ws_root = default_workspace_path()
+
+        if not req.cuts or len(req.cuts) == 0:
+            raise Exception("No se especificaron clips de video en la línea de tiempo.")
+
+        # Determinar carpeta de destino
+        if req.is_preview:
+            output_folder = get_temp_render_dir()
+            output_file = output_folder / f"preview_timeline_{job_id[:8]}.mp4"
+        elif req.output_folder_path and req.output_folder_path.strip():
+            output_folder = Path(req.output_folder_path.strip())
+            if not output_folder.is_absolute():
+                output_folder = (ws_root / output_folder).resolve()
+            output_folder.mkdir(parents=True, exist_ok=True)
+            output_name = req.output_filename or "render_final.mp4"
+            if not output_name.lower().endswith(".mp4"):
+                output_name += ".mp4"
+            output_file = output_folder / output_name
+        else:
+            output_folder = ws_root / "temp_renders"
+            output_folder.mkdir(parents=True, exist_ok=True)
+            output_file = output_folder / f"timeline_render_{job_id[:8]}.mp4"
+
+        JOBS[job_id]["message"] = "Analizando pistas de video, audio y capas..."
+        JOBS[job_id]["progress"] = 10
+
+        # Filtro de escala según formato y aspect ratio
+        if req.aspect_ratio == "9:16" or req.resolution == "vertical_shorts":
+            scale_filter = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
+        elif req.aspect_ratio == "1:1":
+            scale_filter = "scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
+        elif req.aspect_ratio == "4:5":
+            scale_filter = "scale=1080:1350:force_original_aspect_ratio=decrease,pad=1080:1350:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
+        elif req.aspect_ratio == "21:9":
+            scale_filter = "scale=2560:1080:force_original_aspect_ratio=decrease,pad=2560:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
+        elif req.aspect_ratio == "4:3":
+            scale_filter = "scale=1440:1080:force_original_aspect_ratio=decrease,pad=1440:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
+        elif req.resolution == "4k":
+            scale_filter = "scale=3840:2160:force_original_aspect_ratio=decrease,pad=3840:2160:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
+        elif req.resolution == "720p":
+            scale_filter = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
+        else:
+            scale_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
+
+        # Detección de Aceleración por Hardware GPU
+        hw_specs = governor.get_hardware_specs()
+        has_nvidia = hw_specs.get("gpu", {}).get("has_nvidia", False)
+        
+        vcodec = "libx264"
+        crf_args = ["-crf", "17", "-preset", "medium"]
+        if req.is_preview:
+            crf_args = ["-crf", "22", "-preset", "veryfast"]
+        elif sys.platform == "darwin":
+            vcodec = "h264_videotoolbox"
+            crf_args = ["-b:v", "6M"]
+        elif has_nvidia and not req.is_preview:
+            vcodec = "h264_nvenc"
+            crf_args = ["-preset", "p5", "-cq", "18"]
+
+        cmd = [str(ffmpeg_bin), "-y"]
+        filter_complex_parts = []
+
+        # ── 1. Cargar todas las entradas de video (Cuts) ──
+        include_camera_audio = bool(req.audio and not req.audio.mute_video_audio)
+        total_cuts_duration = 0.0
+        loop_target_duration = None
+
+        for i, cut in enumerate(req.cuts):
+            cut_path = Path(cut.clip_path)
+            if not cut_path.is_absolute():
+                cut_path = (ws_root / cut_path).resolve()
+            if not cut_path.exists():
+                raise Exception(f"Clip no encontrado: {cut.clip_path}")
+
+            # Si el corte tiene bucle activado, registrar duración objetivo
+            if cut.loop_to_duration and cut.loop_to_duration > 0:
+                loop_target_duration = cut.loop_to_duration
+            cmd.extend(["-i", str(cut_path)])
+
+            meta = probe_video_meta(cut_path)
+            clip_has_audio = meta.get("has_audio", False)
+
+            st = max(0.0, float(cut.start_time or 0.0))
+            if cut.end_time and cut.end_time > st:
+                et = float(cut.end_time)
+            elif cut.duration and cut.duration > 0:
+                et = st + float(cut.duration)
+            elif meta.get("duration", 0) > st:
+                et = float(meta["duration"])
+            else:
+                et = st + 15.0
+
+            cut_dur = max(0.2, et - st)
+            total_cuts_duration += cut_dur
+
+            # Filtro de video para este corte (con soporte de inversión / reverse)
+            rev_v = ",reverse" if getattr(cut, "is_reversed", False) else ""
+            filter_complex_parts.append(
+                f"[{i}:v]trim=start={st:.3f}:end={et:.3f},setpts=PTS-STARTPTS{rev_v},{scale_filter}[v_cut_{i}]"
+            )
+
+            # Filtro de audio para este corte si se requiere audio de cámara
+            if include_camera_audio:
+                if clip_has_audio:
+                    rev_a = ",areverse" if getattr(cut, "is_reversed", False) else ""
+                    filter_complex_parts.append(
+                        f"[{i}:a]atrim=start={st:.3f}:end={et:.3f},asetpts=PTS-STARTPTS{rev_a},aformat=sample_rates=44100:channel_layouts=stereo[a_cut_{i}]"
+                    )
+                else:
+                    filter_complex_parts.append(
+                        f"aevalsrc=0:d={cut_dur:.3f}:s=44100:c=stereo[a_cut_{i}]"
+                    )
+
+        # Próximo índice de entrada libre para pistas auxiliares
+        next_input_idx = len(req.cuts)
+
+        # ── 2. Concatenación de Cortes Secuenciales (Multi-Clip) ──
+        if len(req.cuts) == 1:
+            v_base_label = "[v_cut_0]"
+            a_base_label = "[a_cut_0]" if include_camera_audio else None
+        else:
+            if include_camera_audio:
+                concat_inputs = "".join([f"[v_cut_{i}][a_cut_{i}]" for i in range(len(req.cuts))])
+                filter_complex_parts.append(
+                    f"{concat_inputs}concat=n={len(req.cuts)}:v=1:a=1[v_concat][a_concat]"
+                )
+                v_base_label = "[v_concat]"
+                a_base_label = "[a_concat]"
+            else:
+                concat_inputs = "".join([f"[v_cut_{i}]" for i in range(len(req.cuts))])
+                filter_complex_parts.append(
+                    f"{concat_inputs}concat=n={len(req.cuts)}:v=1:a=0[v_concat]"
+                )
+                v_base_label = "[v_concat]"
+                a_base_label = None
+
+        # ── 2.1. Calcular Duración Maestra del Proyecto (Modelo Premiere / DaVinci) ──
+        max_audio_end = 0.0
+        if req.audio and req.audio.music_tracks:
+            for trk in req.audio.music_tracks:
+                st = float(trk.start_time or 0.0)
+                dur = float(trk.duration or 0.0)
+                max_audio_end = max(max_audio_end, st + dur)
+
+        max_overlay_end = 0.0
+        if req.overlays:
+            for ov in req.overlays:
+                st = float(ov.start_time or 0.0)
+                dur = float(ov.duration or 0.0)
+                max_overlay_end = max(max_overlay_end, st + dur)
+
+        is_any_cut_looping = any(bool(c.loop_to_duration and c.loop_to_duration > 0) for c in req.cuts)
+        master_project_duration = max(total_cuts_duration, max_audio_end, max_overlay_end)
+        if is_any_cut_looping and loop_target_duration:
+            master_project_duration = max(master_project_duration, loop_target_duration)
+
+        # Si el audio o los overlays continúan más allá de los videos en V1
+        if master_project_duration > total_cuts_duration and total_cuts_duration > 0:
+            if is_any_cut_looping:
+                loop_frames = max(30, int(round(total_cuts_duration * 30)))
+                filter_complex_parts.append(f"{v_base_label}loop=loop=-1:size={loop_frames}:start=0[v_looped]")
+                v_base_label = "[v_looped]"
+            else:
+                gap_sec = master_project_duration - total_cuts_duration
+                filter_complex_parts.append(f"{v_base_label}tpad=stop_mode=add:stop_duration={gap_sec:.3f}:color=black[v_padded]")
+                v_base_label = "[v_padded]"
+
+        # ── 3. Capas y Overlays Interactivos (Texto, Stickers, CTAs) ──
+        cur_v_label = v_base_label
+        for idx, ov in enumerate(req.overlays or []):
+            txt = ov.text or ("SUSCRÍBETE AL CANAL" if ov.type == "subscribe_cta" else "¡DALE LIKE!")
+            # Sanitizar texto para FFmpeg drawtext
+            safe_txt = txt.replace("'", "\\'").replace(":", "\\:").replace("%", "\\%")
+            font_size = max(16, int(36 * (ov.scale or 1.0)))
+            x_pos = f"(w-text_w)*{ov.x_percent}/100"
+            y_pos = f"(h-text_h)*{ov.y_percent}/100"
+            dur = ov.duration or 5.0
+            enable_cond = f"between(t,{ov.start_time},{ov.start_time + dur})"
+            next_v_label = f"[v_ov_{idx}]"
+            filter_complex_parts.append(
+                f"{cur_v_label}drawtext=text='{safe_txt}':fontsize={font_size}:fontcolor=white:box=1:boxcolor=black@0.65:boxborderw=10:x={x_pos}:y={y_pos}:enable='{enable_cond}'{next_v_label}"
+            )
+        # ── 3.1. Subtítulos Sincronizados Quemados en Video ──
+        if req.subtitle_path and Path(req.subtitle_path).exists():
+            clean_sub = Path(req.subtitle_path).as_posix().replace(":", "\\:")
+            next_v_label = "[v_subbed]"
+            filter_complex_parts.append(
+                f"{cur_v_label}subtitles='{clean_sub}':force_style='FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=2'{next_v_label}"
+            )
+            cur_v_label = next_v_label
+
+        final_video_label = cur_v_label
+
+        # ── 4. Entradas Adicionales de Audio (Voz & Música Multipista) ──
+        voice_idx = None
+        if req.audio and req.audio.voice_audio_path and Path(req.audio.voice_audio_path).exists():
+            cmd.extend(["-i", str(req.audio.voice_audio_path)])
+            voice_idx = next_input_idx
+            next_input_idx += 1
+
+        music_combined_label = None
+        # Caso A: Múltiples pistas de música en la línea de tiempo (Multi-track Audio)
+        if req.audio and req.audio.music_tracks and len(req.audio.music_tracks) > 0:
+            music_trk_labels = []
+            for m_i, trk in enumerate(req.audio.music_tracks):
+                trk_p = Path(trk.path)
+                if trk_p.exists():
+                    cmd.extend(["-i", str(trk_p)])
+                    in_idx = next_input_idx
+                    next_input_idx += 1
+                    
+                    delay_ms = max(0, int(trk.start_time * 1000))
+                    base_vol = req.audio.music_volume if req.audio else 0.25
+                    vol = round(trk.volume * base_vol, 3)
+                    
+                    trim_filter = f"atrim=0:{round(trk.duration, 2)},asetpts=PTS-STARTPTS," if (trk.duration and trk.duration > 0) else ""
+                    out_lbl = f"[m_trk_{m_i}]"
+                    filter_complex_parts.append(
+                        f"[{in_idx}:a]{trim_filter}volume={vol},adelay={delay_ms}|{delay_ms},aformat=sample_rates=44100:channel_layouts=stereo{out_lbl}"
+                    )
+                    music_trk_labels.append(out_lbl)
+
+            if len(music_trk_labels) > 1:
+                inputs_str = "".join(music_trk_labels)
+                filter_complex_parts.append(
+                    f"{inputs_str}amix=inputs={len(music_trk_labels)}:duration=longest:dropout_transition=0[m_mixed]"
+                )
+                music_combined_label = "[m_mixed]"
+            elif len(music_trk_labels) == 1:
+                music_combined_label = music_trk_labels[0]
+
+        # Caso B: Pista de música única heredada (Legacy single-track)
+        elif req.audio and req.audio.music_audio_path and Path(req.audio.music_audio_path).exists():
+            cmd.extend(["-stream_loop", "-1", "-i", str(req.audio.music_audio_path)])
+            music_idx = next_input_idx
+            next_input_idx += 1
+            m_vol = req.audio.music_volume if req.audio else 0.25
+            filter_complex_parts.append(
+                f"[{music_idx}:a]volume={m_vol},aformat=sample_rates=44100:channel_layouts=stereo[music_fmt]"
+            )
+            music_combined_label = "[music_fmt]"
+
+        # Mezcla final de Audio
+        audio_out_label = None
+        audio_streams_to_mix = []
+
+        if a_base_label:
+            audio_streams_to_mix.append(a_base_label)
+
+        if voice_idx is not None:
+            filter_complex_parts.append(f"[{voice_idx}:a]aformat=sample_rates=44100:channel_layouts=stereo[voice_fmt]")
+            audio_streams_to_mix.append("[voice_fmt]")
+
+        if music_combined_label is not None:
+            audio_streams_to_mix.append(music_combined_label)
+
+        if len(audio_streams_to_mix) > 1:
+            inputs_str = "".join(audio_streams_to_mix)
+            filter_complex_parts.append(
+                f"{inputs_str}amix=inputs={len(audio_streams_to_mix)}:duration=longest:dropout_transition=2[a_mixed]"
+            )
+            audio_out_label = "[a_mixed]"
+        elif len(audio_streams_to_mix) == 1:
+            audio_out_label = audio_streams_to_mix[0]
+
+        # ── 5. Ensamblado del Comando FFmpeg Final ──
+        if filter_complex_parts:
+            cmd.extend(["-filter_complex", ";".join(filter_complex_parts)])
+            cmd.extend(["-map", final_video_label])
+            if audio_out_label:
+                cmd.extend(["-map", audio_out_label])
+        else:
+            cmd.extend(["-map", "0:v"])
+            if audio_out_label:
+                cmd.extend(["-map", audio_out_label])
+
+        # Límite de Duración (Modelo Premiere: fin del elemento más lejano)
+        if req.is_preview:
+            cmd.extend(["-t", "30"])
+        elif master_project_duration > 0:
+            cmd.extend(["-t", str(round(master_project_duration, 2))])
+        elif total_cuts_duration > 0:
+            cmd.extend(["-t", str(round(total_cuts_duration, 2))])
+
+        cmd.extend(["-c:v", vcodec])
+        cmd.extend(crf_args)
+        if audio_out_label:
+            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+
+        cmd.extend(["-movflags", "+faststart", str(output_file)])
+
+        creationflags = 0x08000000 if sys.platform == "win32" else 0
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            creationflags=creationflags,
+            universal_newlines=True
+        )
+
+        JOBS[job_id]["message"] = "Renderizando composición multipista..."
+        JOBS[job_id]["progress"] = 35
+
+        def progress_ticker():
+            cur = 35
+            while process.poll() is None and cur < 92:
+                time.sleep(1.2)
+                cur += 4
+                JOBS[job_id]["progress"] = cur
+
+        ticker = threading.Thread(target=progress_ticker, daemon=True)
+        ticker.start()
+
+        _, stderr = process.communicate()
+
+        if process.returncode != 0:
+            raise Exception(f"FFmpeg falló al componer el timeline: {stderr[-500:]}")
+
+        file_size = output_file.stat().st_size / (1024 * 1024) if output_file.exists() else 0
+        JOBS[job_id]["status"] = "completed"
+        JOBS[job_id]["progress"] = 100
+        JOBS[job_id]["output_path"] = output_file.as_posix()
+        JOBS[job_id]["file_size_mb"] = round(file_size, 2)
+        JOBS[job_id]["is_preview"] = req.is_preview
+        JOBS[job_id]["message"] = "Composición de video finalizada con éxito."
+
+    except Exception as e:
+        JOBS[job_id]["status"] = "error"
+        JOBS[job_id]["error"] = str(e)
+        JOBS[job_id]["message"] = f"Error en renderizado: {str(e)}"
+    finally:
+        governor.release_job_slot(job_id)
+
+@router.post("/render_timeline")
+def render_timeline(req: RenderTimelineRequest, background_tasks: BackgroundTasks):
+    """
+    Inicia la composición y renderizado multipista del Timeline Studio en el motor local.
+    """
+    job_id = str(uuid.uuid4())
+    slot_acquired = governor.acquire_job_slot(job_id, "video_timeline", {
+        "is_preview": req.is_preview,
+        "resolution": req.resolution
+    })
+
+    initial_msg = "Iniciando renderizado de timeline..." if slot_acquired else "En cola: esperando slot disponible..."
+    JOBS[job_id] = {
+        "id": job_id,
+        "status": "queued",
+        "progress": 0,
+        "message": initial_msg,
+        "output_path": None,
+        "is_preview": req.is_preview,
+        "created_at": time.time()
+    }
+
+    background_tasks.add_task(run_timeline_render, job_id, req)
+
+    return {
+        "job_id": job_id,
+        "status": "processing" if slot_acquired else "queued",
+        "slot_acquired": slot_acquired,
+        "is_preview": req.is_preview,
+        "message": initial_msg
+    }

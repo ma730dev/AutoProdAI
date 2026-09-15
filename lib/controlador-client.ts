@@ -357,6 +357,82 @@ export class ControladorClient {
     }
   }
 
+  static async getVideoLoopStatus(jobId: string): Promise<any> {
+    return this.getVideoJobStatus(jobId);
+  }
+
+  /**
+   * Inicia el renderizado multipista del Timeline Studio (cortes, mezcla de audio, overlays)
+   */
+  static async renderTimeline(params: {
+    cuts: Array<{
+      clip_path: string;
+      start_time?: number;
+      end_time?: number | null;
+      duration?: number | null;
+      loop_to_duration?: number | null;
+      is_reversed?: boolean;
+    }>;
+    overlays?: Array<{
+      type: string;
+      text?: string | null;
+      path?: string | null;
+      x_percent?: number;
+      y_percent?: number;
+      scale?: number;
+      start_time?: number;
+      duration?: number;
+    }>;
+    audio?: {
+      voice_audio_path?: string | null;
+      music_audio_path?: string | null;
+      music_tracks?: Array<{
+        id?: string;
+        path: string;
+        name?: string;
+        start_time: number;
+        duration?: number | null;
+        volume?: number;
+      }>;
+      music_volume?: number;
+      mute_video_audio?: boolean;
+    };
+    subtitlePath?: string | null;
+    resolution?: string;
+    quality?: string;
+    aspectRatio?: string;
+    outputFolderPath?: string | null;
+    outputFilename?: string | null;
+    isPreview?: boolean;
+  }): Promise<{ job_id: string; status: string; is_preview: boolean; message: string }> {
+    try {
+      const response = await fetch(`${getControladorUrl()}/video/render_timeline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cuts: params.cuts,
+          overlays: params.overlays || [],
+          audio: params.audio || null,
+          subtitle_path: params.subtitlePath || null,
+          resolution: params.resolution || '1080p',
+          quality: params.quality || 'high',
+          aspect_ratio: params.aspectRatio || '16:9',
+          output_folder_path: params.outputFolderPath || null,
+          output_filename: params.outputFilename || 'render_final.mp4',
+          is_preview: params.isPreview ?? false,
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Error en composición de timeline');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Controlador Client: renderTimeline failed', error);
+      throw error;
+    }
+  }
+
   /**
    * Retorna la URL directa para streaming de la previsualización
    */
@@ -535,6 +611,50 @@ export class ControladorClient {
     } catch (error) {
       console.error('Controlador Client: saveBinaryFile failed', error);
       throw error;
+    }
+  }
+
+  /**
+   * Sube archivos de video o audio de cualquier tamaño (100MB, 2GB, 10GB+)
+   * mediante streaming multipart directamente al disco sin pasar por Base64
+   */
+  static async uploadStreamFile(
+    file: File,
+    targetPath?: string | null,
+    subfolder: string = 'Videos'
+  ): Promise<{ status: string; path: string; name: string; size_bytes: number; size_mb: number }> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (targetPath) formData.append('target_path', targetPath);
+      formData.append('subfolder', subfolder);
+
+      const response = await fetch(`${getControladorUrl()}/workspace/upload_stream`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error en subida de archivo');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Controlador Client: uploadStreamFile failed', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtiene la lista de videos existentes en una carpeta del workspace
+   */
+  static async getFolderVideos(folderPath: string): Promise<Array<{ name: string; path: string; size_mb: number }>> {
+    try {
+      const response = await fetch(`${getControladorUrl()}/workspace/folder_videos?folder_path=${encodeURIComponent(folderPath)}`);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.videos || [];
+    } catch {
+      return [];
     }
   }
 

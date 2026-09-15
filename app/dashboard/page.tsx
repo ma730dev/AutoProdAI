@@ -21,7 +21,7 @@ import { AutoProdLogo } from '@/components/AutoProdLogo';
 // Dynamic lazy imports for heavy studios and modals to minimize initial bundle size and optimize PageSpeed
 const UserSettingsModal = dynamic(() => import('@/components/dashboard/UserSettingsModal'), { ssr: false });
 const SubscriptionPlansModal = dynamic(() => import('@/components/dashboard/SubscriptionPlansModal'), { ssr: false });
-const VideoLooperStudio = dynamic(() => import('@/components/dashboard/VideoLooperStudio'), { ssr: false });
+const VideoStudio = dynamic(() => import('@/components/dashboard/VideoStudio'), { ssr: false });
 const VideoSubtitlesStudio = dynamic(() => import('@/components/dashboard/VideoSubtitlesStudio'), { ssr: false });
 const AssetLibraryView = dynamic(() => import('@/components/dashboard/AssetLibraryView'), { ssr: false });
 const ImageStudio = dynamic(() => import('@/components/dashboard/ImageStudio'), { ssr: false });
@@ -263,6 +263,7 @@ export default function Dashboard() {
 
   // ── Navigation State ──
   const [activeView, setActiveView] = useState<'home' | 'chat' | 'editor' | 'looper' | 'subtitles' | 'assets' | 'images' | 'tts'>('home');
+  const [videoStudioTab, setVideoStudioTab] = useState<'clips' | 'audio' | 'text' | 'subtitles'>('clips');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
 
@@ -996,8 +997,14 @@ export default function Dashboard() {
             <Launchpad
               lang={lang}
               onSelect={handleNewConversationWithRole}
-              onSelectLooper={() => setActiveView('looper')}
-              onSelectSubtitles={() => setActiveView('subtitles')}
+              onSelectLooper={() => {
+                setVideoStudioTab('clips');
+                setActiveView('looper');
+              }}
+              onSelectSubtitles={() => {
+                setVideoStudioTab('subtitles');
+                setActiveView('looper');
+              }}
               onSelectAssets={() => setActiveView('assets')}
               onSelectImages={() => setActiveView('images')}
               onSelectTTS={() => setActiveView('tts')}
@@ -1010,21 +1017,18 @@ export default function Dashboard() {
                 setIsWorkspaceModalOpen(true);
               }}
             />
-          ) : activeView === 'looper' ? (
-            <VideoLooperStudio
+          ) : (activeView === 'looper' || activeView === 'subtitles') ? (
+            <VideoStudio
               lang={lang}
               channels={channels}
               workspacePath={workspacePath}
+              initialMediaTab={activeView === 'subtitles' ? 'subtitles' : videoStudioTab}
               onBack={() => setActiveView('home')}
               onRefreshWorkspace={() => {
                 if (workspacePath) {
                   loadWorkspaceTree(workspacePath);
                 }
               }}
-            />
-          ) : activeView === 'subtitles' ? (
-            <VideoSubtitlesStudio
-              onBackToDashboard={() => setActiveView('home')}
             />
           ) : activeView === 'assets' ? (
             <AssetLibraryView

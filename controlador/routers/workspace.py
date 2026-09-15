@@ -6,7 +6,7 @@ import base64
 from datetime import datetime
 from pathlib import Path
 import mimetypes
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, File, UploadFile, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -609,6 +609,68 @@ def save_binary_file(req: SaveBinaryFileRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al guardar archivo binario: {str(e)}")
+
+@router.post("/upload_stream")
+async def upload_stream(
+    file: UploadFile = File(...),
+    target_path: Optional[str] = Form(None),
+    subfolder: Optional[str] = Form("Videos")
+):
+    """
+    Recibe archivos de video o audio de CUALQUIER tamaño (100MB, 2GB, 10GB+)
+    por streaming multipart en trozos directamente a disco, sin pasar por Base64 ni colapsar la RAM.
+    """
+    try:
+        ws_root = default_workspace_path()
+        if target_path and target_path.strip() not in [".", "/"]:
+            dest_dir = Path(target_path.strip())
+            if not dest_dir.is_absolute():
+                dest_dir = (ws_root / dest_dir).resolve()
+        else:
+            dest_dir = (ws_root / (subfolder or "Videos")).resolve()
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        out_file_path = (dest_dir / file.filename).resolve()
+
+        with open(out_file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        size_mb = round(out_file_path.stat().st_size / (1024 * 1024), 2)
+        return {
+            "status": "success",
+            "name": file.filename,
+            "path": out_file_path.as_posix(),
+            "size_bytes": out_file_path.stat().st_size,
+            "size_mb": size_mb
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en subida de archivo grande: {str(e)}")
+
+@router.get("/folder_videos")
+def get_folder_videos(folder_path: str):
+    """Retorna la lista de videos existentes dentro de una carpeta específica del workspace."""
+    ws_root = default_workspace_path()
+    fp = Path(folder_path.strip())
+    if not fp.is_absolute():
+        fp = (ws_root / fp).resolve()
+    
+    if not fp.exists() or not fp.is_dir():
+        return {"videos": []}
+
+    valid_exts = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+    videos = []
+    try:
+        for item in sorted(fp.iterdir(), key=lambda x: x.name.lower()):
+            if item.is_file() and item.suffix.lower() in valid_exts:
+                size_mb = round(item.stat().st_size / (1024 * 1024), 2)
+                videos.append({
+                    "name": item.name,
+                    "path": item.as_posix(),
+                    "size_mb": size_mb,
+                })
+    except Exception:
+        pass
+    return {"videos": videos}
 
 class DeleteFileRequest(BaseModel):
     path: str

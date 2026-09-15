@@ -39,7 +39,7 @@ Esta carpeta contiene el detalle de las mecánicas centrales y el seguimiento de
 
 #### 📦 Módulos Específicos
 - 🤖 **Agentic Orchestrator:** [Ficha Técnica](file:///e:/autoprod/docs/features/agentic_orchestrator/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/agentic_orchestrator/idea.md)
-- 🔁 **Video Looper Studio:** [Ficha Técnica](file:///e:/autoprod/docs/features/video_looper/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/video_looper/idea.md)
+- 🎬 **Video Studio & Timeline Pro (con Looper Integrado):** [Ficha Técnica](file:///e:/autoprod/docs/features/video_looper/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/video_looper/idea.md)
 - 🎧 **Subtitulador Whisper & Hardware Governor:** [Ficha Técnica](file:///e:/autoprod/docs/features/subtitles_whisper/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/subtitles_whisper/idea.md)
 - ⚙️ **Local Motor (FastAPI):** [Ficha Técnica](file:///e:/autoprod/docs/features/local_motor/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/local_motor/idea.md)
 - 📁 **Folder CRUD:** [Ficha Técnica](file:///e:/autoprod/docs/features/folder_crud/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/folder_crud/idea.md)

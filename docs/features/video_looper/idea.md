@@ -1,14 +1,19 @@
-# 💡 Idea & Escalabilidad: Video Looper Studio
+# 💡 Idea & Escalabilidad: Video Studio & Timeline Editor
 
 > **Ruta:** `docs/features/video_looper/idea.md`  
-> **Propósito:** Automatización de fondos en bucle infinito y videos de música sin esfuerzo manual.
+> **Propósito:** Editor de video no lineal (NLE) ágil y soberano en el navegador, con montaje multiclip, recorte interactivo, pistas de música, overlays y exportación GPU.
 
 ---
 
-## 🎯 1. El Problema & La Oportunidad de Negocio
+## 🎯 1. El Problema & La Visión de Producto
 
-- **El Problema:** Crear videos de 1 a 3 horas de música lo-fi, sonidos para dormir o fondos relajantes requiere abrir un editor pesado (Premiere/DaVinci), duplicar un clip de 10 segundos cientos de veces, ajustar manualmente el audio y esperar un render lento. Además, YouTube comprime agresivamente escenas oscuras si el bitrate y el CRF no están optimizados.
-- **La Solución AutoProd:** Arrastras un video y una carpeta de canciones; AutoProd calcula automáticamente las repeticiones para que el bucle coincida exactamente con la música, aplica configuraciones anti-pixelado de nivel profesional y genera una vista previa de 5 minutos en segundos a **$0 costo de servidor**.
+- **El Problema:** Para crear un video de YouTube, Reel o podcast ambiental, los creadores debían abrir editores hiperpesados (Premiere, DaVinci Resolve) o ceder su privacidad y cuotas mensuales en suites web lentas que re-comprimen todo en la nube. Además, para canales de música Lo-Fi o fondos relajantes, duplicar clips manualmente y calcular duraciones era una tarea repetitiva y propensa a saltos de audio.
+- **La Solución AutoProd:** Un **Video Studio NLE completo** que corre nativamente en el navegador conectado al Motor Local (`localhost:8000`). El creador tiene:
+  1. **Montaje No Lineal (Core):** Biblioteca de medios, línea de tiempo con recorte interactivo (In/Out handles), reordenamiento de cortes por arrastre, canvas multi-relación de aspecto (16:9, 9:16 Shorts, 1:1) e inspector contextual en tiempo real.
+  2. **Looper Express Integrado (Feature):** Generación de bucles infinitos de 1 a 3 horas sincronizados automáticamente con carpetas de música en segundos mediante *Stream Copy* (`-c:v copy`), o activable como propiedad de clip individual en la línea de tiempo.
+  3. **Audio Multitrack:** Mezcla multitrack (voz, video y pistas musicales) con niveles de volumen independientes.
+  4. **Overlays & Textos:** Títulos, CTAs y marcas de agua arrastrables sobre el canvas.
+  5. **Costo Cero & Privacidad Absoluta:** Renderizado acelerado por GPU local (NVENC / VideoToolbox / CPU libx264). Tus archivos nunca abandonan tu máquina.
 
 ---
 
@@ -16,64 +21,69 @@
 
 | Capacidad | Estado | Descripción / Comentario |
 |---|:---:|---|
-| **Arrastrar & Soltar (Drag & Drop)** | `✅ HECHO` | Desde el árbol de archivos local directamente a la Drop Zone. |
-| **Sincronización Automática con Música** | `✅ HECHO` | Lee todas las canciones de una carpeta y calcula la duración exacta del loop. |
-| **Línea de Tiempo Multiclip (Secuencia)** | `✅ HECHO` | Pista horizontal interactiva con arrastre Drag-and-Drop, reordenamiento con flechas `◀ ▶`, duplicado rápido `📋` y concatenación secuencial garantizada sin desincronización de audio ni FPS. |
-| **Carga Directa desde PC (Explorador Windows)** | `✅ HECHO` | Soporte para arrastrar archivos directamente desde el escritorio o hacer clic para buscar en el sistema de archivos del usuario. |
-| **Modo Cero Pérdida (1:1 Stream Copy)** | `✅ HECHO` | Si la resolución es original y los clips coinciden, genera el bucle en segundos sin re-codificación (`-c:v copy`), conservando el 100% de la nitidez nativa. |
+| **Arquitectura NLE (Media Bin + Canvas + Inspector + Timeline)** | `✅ HECHO` | Interfaz de 3 columnas estilo editor profesional con reproductor central y línea de tiempo inferior. |
+| **Línea de Tiempo Multiclip Interactiva** | `✅ HECHO` | Recorte visual de puntos de entrada y salida (Handles In/Out) con límites seguros (`>= 0.3s`) y recálculo en tiempo real. |
+| **Reordenamiento Secuencial por Arrastre (Drag & Drop)** | `✅ HECHO` | Reorganización ágil de cortes en la pista de video arrastrando clips directamente en la línea de tiempo. |
+| **Multi-Aspect Ratio Canvas (16:9, 9:16 Shorts, 1:1, 4:5, 21:9)** | `✅ HECHO` | Encuadre visual dinámico y escalado automático (`scale=w:h:force_original_aspect_ratio,pad`) en exportación. |
+| **Inspector Contextual Reactivo** | `✅ HECHO` | Inspección detallada del clip seleccionado (In/Out, volumen, toggle de bucle), del overlay de texto o del proyecto global. |
+| **Mezcla de Audio Multitrack** | `✅ HECHO` | Pipeline `amix` con balance independiente de volumen para voz, video original y pistas de música. |
+| **Multipista de Audio (Múltiples Canciones en A1)** | `✅ HECHO` | Subida múltiple, audición rápida previa (`▶ / ⏸`), inserción en cascada y recorte/arrastre individual en la pista A1 con mezcla GPU `adelay` + `atrim`. |
+| **Duración de Secuencia Basada en Elementos (Modelo Premiere)** | `✅ HECHO` | La duración maestra del proyecto la define el elemento más lejano en cualquier pista (V1, A1, T1), sin truncar audio ni overlays distantes. |
+| **Zoom Panorámico Elástico & Fit to View** | `✅ HECHO` | Rango de escala de `0.2 px/s` a `60 px/s` para visualizar proyectos de 30m a 1h+ en una sola pantalla, con botón de ajuste automático `Shift+Z`. |
+| **Soporte de Huecos (Black Slug Fallback)** | `✅ HECHO` | Reproducción continua sobre tramos sin video: el canvas muestra fondo negro limpio y la música/etiquetas continúan activas sin frenar el cabezal. |
+| **Asistente Smart Sync (Detección de Discrepancia V/A)** | `✅ HECHO` | Detección contextual cuando la música dura más que los videos, con acciones de 1-clic: bucle continuo o recorte al video. |
+| **Overlays de Texto & CTAs Arrastrables** | `✅ HECHO` | Capas de texto posicionables en DOM y renderizadas con precisión vía `drawtext` en backend. |
 | **Calidad Anti-Pixelado H.264 (CRF Puro + AQ-mode 3)** | `✅ HECHO` | Perfiles CRF 12 (Master), 15 (Alta Nitidez) y 18 (Equilibrado) con `aq-mode=3` para fondos oscuros espaciales y partículas. |
-| **Previsualizador Dinámico con Regeneración** | `✅ HECHO` | Render ultrarrápido con loader animado, indicador de progreso en vivo y botón `🔄 Regenerar`. |
-| **Control de Audio (Mute / Silenciar)** | `✅ HECHO` | Detección de audio con ffprobe y opción de silenciar la pista original del video (`-an`). |
-| **Inspección Multimedia en Panel Lateral** | `✅ HECHO` | Clic en archivos `.mp4`, `.mov`, `.mp3` del FileTree abre el reproductor HTML5 streaming local (`/workspace/raw`). |
-| **Ejecución Silenciosa & Desacoplada** | `✅ HECHO` | Subprocesos con `CREATE_NO_WINDOW` (sin popups de terminal) y `start-motor.bat` desacoplado. |
-| **Exportación a Workspace Local** | `✅ HECHO` | Guarda el archivo final en la carpeta `/Videos` del canal correspondiente. |
-| **Render Batch / Cola Nocturna** | `⏳ FALTANTE` | Encolar múltiples combinaciones de videos y canciones para procesar consecutivamente. |
-| **Transición Suave (Crossfade / Dissolve)** | `⏳ FALTANTE` | Filtro de encadenado suave entre repeticiones del clip para evitar saltos bruscos. |
-| **Soporte de Aceleración por Hardware GPU** | `⏳ FALTANTE` | Activar flags para `h264_nvenc` (NVIDIA) o `h264_qsv` (Intel) para acelerar renders 5x. |
-| **Preajustes de Shorts / TikTok (9:16)** | `⏳ FALTANTE` | Centrado inteligente del clip horizontal en encuadre vertical con desenfoque de fondo. |
+| **Aceleración por Hardware GPU** | `✅ HECHO` | Detección y uso automático de encoders por hardware (`h264_nvenc` en NVIDIA, `h264_videotoolbox` en Apple Silicon, fallback a `libx264`). |
+| **Audio Silence Fallback para Clips Silenciosos** | `✅ HECHO` | Generación automática de canal de silencio `anullsrc` para clips mudos para evitar desincronización en `concat`. |
+| **Transiciones Suaves Entre Cortes (Crossfade / Dissolve)** | `⏳ FALTANTE` | Filtro de encadenado `xfade` configurable entre cortes en la línea de tiempo. |
+| **Pista de Subtítulos Sincronizada (Faster-Whisper)** | `⏳ FALTANTE` | Carga de subtítulos `.ass` / `.srt` generados en FEAT-05 directamente a la pista de subtítulos del Timeline. |
+| **Render Batch / Cola Nocturna de Exportación** | `⏳ FALTANTE` | Encolar múltiples proyectos o secuencias para procesar consecutivamente sin bloquear la UI. |
+| **Generación Automática de Proxies 720p para 4K** | `⏳ FALTANTE` | Creación de copias livianas en segundo plano para scrubbing a 60 FPS en metrajes pesados. |
 
 ---
 
 ## 🚀 3. Banco de Ideas de Escalabilidad para este Módulo
 
-1. **Auto-Generador de Metadatos de Tracklist:**
-   - Extraer los nombres de los archivos de audio en la carpeta y generar un texto de "Capítulos / Tracklist con Timestamps" para pegarlo directamente en la descripción de YouTube.
-2. **Inserción de Efectos de Partículas & Lluvia:**
-   - Superponer capas de lluvia, nieve o polvo flotante transparente sobre cualquier video estático antes de compilar el bucle.
-3. **Control de Normalización de Volumen (Loudness EBU R128):**
-   - Normalizar automáticamente el volumen de todas las pistas de música de la carpeta para que no haya canciones más fuertes que otras.
+1. **Auto-Generador de Tracklist y Capítulos:**
+   - Extraer metadatos de las canciones en la carpeta de música y generar la lista de capítulos con timestamps (`00:00 - Canción A`) lista para copiar en la descripción de YouTube.
+2. **Biblioteca de Transiciones y Motion Presets:**
+   - Presets de entrada/salida (Zoom, Slide, Blur, Fade) aplicables en 1 clic desde el Inspector de clips.
+3. **Normalización de Volumen EBU R128 (Loudness Radar):**
+   - Nivelación automática del volumen integrado (-14 LUFS para YouTube) de todas las canciones y pistas de voz para evitar saltos molestos entre cortes.
+4. **Plantillas de Shorts / Reels Automatizadas:**
+   - Conversión de clips horizontales con centrado inteligente del sujeto y fondo difuminado (*blurred background bars*).
+
 ---
 
-## 🎬 4. Arquitectura Definitiva: Video Studio Unificado (Looper Express + Timeline Pro)
+## 🎬 4. Filosofía de Arquitectura: Video Studio como Core y Looper como Feature
 
-Para maximizar la productividad y evitar que el creador tenga que saltar entre herramientas o recurrir a CapCut, **VideoLooper queda INTEGRADO (JUNTO)** dentro del **Video Studio** de AutoProd bajo un modelo dual no destructivo:
+La arquitectura de Video Studio se basa en tres principios no negociables:
 
-### 4.1. Los 2 Modos de Trabajo en la Misma Interfaz:
-1. **Modo Looper Express (1-Clic):**
-   - Para creadores de canales de música Lo-Fi, fondos relajantes o podcasts estáticos.
-   - Flujo directo: Arrastras tu video de 10s + carpeta de canciones y FFmpeg genera el bucle de 1 a 3 horas en **15 segundos** usando *Stream Copy* (`-c:v copy`), sin pasar por renderizados pesados.
-2. **Modo Timeline Pro (Línea de Tiempo Multipista):**
-   - Para creadores que sobre ese bucle (o sobre clips de streamers/vlogs) necesitan agregar:
-     - **Pista de Overlays:** Botón animado de *"Suscríbete"*, logo del canal (`InfoCanal/logo.png`), marcas de agua y CTAs con posicionamiento arrastrable (Drag & Drop) sobre el canvas.
-     - **Pista de Subtítulos:** Subtítulos sincronizados palabra por palabra con Faster-Whisper.
-     - **Pista de Audio con Ducking:** La música de fondo baja de volumen suavemente cuando la voz en off habla.
-   - **Bucle Virtual (0 Lag en Web):** En la línea de tiempo el bucle se representa como **un solo bloque continuo** (no 360 cortes). El navegador solo reproduce el clip de 15 MB en bucle con el atributo nativo `loop`, consumiendo prácticamente 0% de RAM.
+```mermaid
+graph TD
+    A[Video Studio NLE Core] --> B[Media Bin]
+    A --> C[Línea de Tiempo Multiclip]
+    A --> D[Canvas Viewport & Inspector]
+    A --> E[Audio Multitrack & Overlays]
+    
+    B --> F[Tool: Looper Express 1-Clic]
+    C --> G[Clip Modifier: Bucle Infinito]
+    
+    F --> H[Stream-Copy Directo /video/create_loop]
+    G --> I[Render Pipeline /video/render_timeline]
+    E --> I
+```
 
-### 4.2. Gobernanza de Hardware, Red y PC:
-- **Cero Duplicación de Archivos:** No se genera un "video de prueba" intermedio. El creador edita en memoria virtual sobre la vista previa.
-- **Single-Pass Final Render:** Al presionar "Exportar Video Final", FFmpeg en el PC local procesa el bucle, la música y los overlays en **una sola pasada con aceleración por GPU (NVENC/VideoToolbox)** a costo $0 de servidor.
-- **Streaming por Rango (HTTP 206):** El navegador web solo solicita los bytes del segundo exacto que se está reproduciendo, permitiendo previsualizar videos de 3 horas sin congelar la máquina.
+### 4.1. Separación Limpia de Estados (Media Bin vs. Timeline Cuts)
+- Los archivos en el **Media Bin** son recursos disponibles (`projectClips`).
+- La **Línea de Tiempo** contiene cortes activos (`timelineCuts`), cada uno con su punto de entrada (`startTime`), punto de salida (`endTime`), volumen y flag de bucle.
+- Modificar un corte no altera el archivo original en el disco ni los demás cortes en el bin.
 
-### 4.3. Soporte para Videoblogs y Metraje Largo (Cortes Virtuales):
-- **Cortes Virtuales en Memoria:** Cortar un video de 1 hora no crea archivos físicos ni consume RAM adicional. Cada corte es una simple tupla de texto (`{ clip, start, end }`). 200 cortes ocupan menos de 30 KB en la memoria del navegador.
-- **Salto Instantáneo entre Cortes:** El reproductor web salta entre los puntos de corte en <10ms directamente desde el SSD NVMe local sin interrupciones perceptibles.
-- **Generación Automática de Proxies para 4K:** En metrajes pesados, el motor local genera en segundo plano copias de trabajo en 720p para corte y edición fluida a 60 FPS, aplicando los cortes al archivo 4K original únicamente al momento de la exportación final.
+### 4.2. Edición Virtual en Memoria (Zero Disk Overhead)
+- Cortar, mover y reordenar fragmentos no crea archivos temporales. Son referencias ligeras de tiempo en la memoria del navegador.
+- El renderizado final ocurre en **una sola pasada con aceleración por GPU** al presionar "Exportar Secuencia".
 
-### 4.4. Composición Dinámica y Modular (Cero Rigidez):
-- **Contenedores, no Requisitos Obligatorios:** Las subcarpetas del proyecto (`Guiones/`, `Videos/`, `Musica/`, etc.) son espacios de trabajo disponibles, nunca una lista de tareas bloqueantes.
-- **Adaptabilidad a Diversos Arquetipos:**
-  - *Canales Lo-Fi / Ambiente:* Solo Video + Música (sin guion, sin TTS, sin subtítulos).
-  - *Videoblogs / IRL / Clips de Streamers:* Video con audio real de cámara + Subtítulos y Overlays (sin TTS sintetizado).
-  - *Canales Automatizados / Ensayos:* Pipeline completo (Guion + TTS + B-roll + Música + Subtítulos).
-  - *Shorts / Reels:* Video vertical 9:16 + Subtítulos cinemáticos.
-- **Renderizado Selectivo:** El motor local compila exclusivamente las pistas que el creador decide activar en su línea de tiempo, sin generar advertencias falsas de archivos faltantes.
+### 4.3. Respeto al Flujo del Creador
+- Quien solo necesita un video ambiental de 2 horas con música relajante usa la pestaña **⚡ Looper** en el panel izquierdo y en 10 segundos tiene su archivo listo.
+- Quien necesita un montaje detallado con cortes, voz en off, música atenuada y títulos usa la línea de tiempo completa sin salir del mismo estudio.

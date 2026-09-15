@@ -83,7 +83,7 @@ export default function ConversationSidebar({
 
   return (
     <div className="flex flex-col h-full bg-zinc-950 border-r border-zinc-800">
-      
+
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto minimal-scrollbar p-4 flex flex-col gap-6">
 
@@ -100,7 +100,7 @@ export default function ConversationSidebar({
               {motorStatus ? 'Online' : 'Offline'}
             </span>
           </div>
-          
+
           {/* Toggle Switch */}
           <button
             type="button"
@@ -119,19 +119,17 @@ export default function ConversationSidebar({
                 }
               }
             }}
-            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-              motorStatus ? 'bg-emerald-500' : 'bg-zinc-700'
-            }`}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${motorStatus ? 'bg-emerald-500' : 'bg-zinc-700'
+              }`}
           >
             <span
               aria-hidden="true"
-              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                motorStatus ? 'translate-x-4' : 'translate-x-0'
-              }`}
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${motorStatus ? 'translate-x-4' : 'translate-x-0'
+                }`}
             />
           </button>
         </div>
-        
+
         {/* Workspace / Project Section */}
         <div className="space-y-3 shrink-0">
           <div className="flex items-center justify-between mb-3 px-2">
@@ -162,7 +160,7 @@ export default function ConversationSidebar({
                     {workspacePath}
                   </span>
                   {onAddNode && (
-                    <button 
+                    <button
                       onClick={() => onAddNode(workspacePath, 'channel')}
                       className="opacity-50 group-hover:opacity-100 px-1.5 py-0.5 rounded bg-zinc-700 hover:bg-indigo-600 text-white text-[10px] transition-all"
                       title="Añadir Canal"
@@ -193,22 +191,21 @@ export default function ConversationSidebar({
           💬 {lang === 'es' ? 'Nueva Conversación' : 'New Conversation'}
         </button>
 
-        {/* Video Looper Studio Button */}
+        {/* Video Timeline Studio Button */}
         {onOpenLooper && (
           <button
             onClick={onOpenLooper}
-            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${
-              activeView === 'looper'
+            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'looper'
                 ? 'bg-purple-950/70 border-purple-500 text-purple-200 shadow-sm shadow-purple-500/20'
                 : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
-            }`}
+              }`}
           >
             <span className="flex items-center gap-2">
-              <span>🔁</span>
-              <span>{lang === 'es' ? 'Video Looper Studio' : 'Video Looper Studio'}</span>
+              <span>🎬</span>
+              <span>{lang === 'es' ? 'Video Studio (Editor)' : 'Video Studio (Editor)'}</span>
             </span>
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold font-mono">
-              HD
+              PRO
             </span>
           </button>
         )}
@@ -217,11 +214,10 @@ export default function ConversationSidebar({
         {onOpenImages && (
           <button
             onClick={onOpenImages}
-            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${
-              activeView === 'images'
+            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'images'
                 ? 'bg-purple-950/70 border-purple-500 text-purple-200 shadow-sm shadow-purple-500/20'
                 : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
-            }`}
+              }`}
           >
             <span className="flex items-center gap-2">
               <span>🎨</span>
@@ -237,11 +233,10 @@ export default function ConversationSidebar({
         {onOpenAssets && (
           <button
             onClick={onOpenAssets}
-            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${
-              activeView === 'assets'
+            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'assets'
                 ? 'bg-indigo-950/70 border-indigo-500 text-indigo-200 shadow-sm shadow-indigo-500/20'
                 : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
-            }`}
+              }`}
           >
             <span className="flex items-center gap-2">
               <span>🗃️</span>
@@ -257,11 +252,10 @@ export default function ConversationSidebar({
         {onOpenTTS && (
           <button
             onClick={onOpenTTS}
-            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${
-              activeView === 'tts'
+            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'tts'
                 ? 'bg-purple-950/70 border-purple-500 text-purple-200 shadow-sm shadow-purple-500/20'
                 : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
-            }`}
+              }`}
           >
             <span className="flex items-center gap-2">
               <span>🎙️</span>
@@ -273,25 +267,6 @@ export default function ConversationSidebar({
           </button>
         )}
 
-        {/* Whisper Subtitles Studio Button */}
-        {onOpenSubtitles && (
-          <button
-            onClick={onOpenSubtitles}
-            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${
-              activeView === 'subtitles'
-                ? 'bg-emerald-950/70 border-emerald-500 text-emerald-200 shadow-sm shadow-emerald-500/20'
-                : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <span>🎧</span>
-              <span>{lang === 'es' ? 'Subtitulador IA' : 'AI Subtitles'}</span>
-            </span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold font-mono">
-              WHISPER
-            </span>
-          </button>
-        )}
 
         {/* Conversations History */}
         <div className="space-y-2 shrink-0">
@@ -307,15 +282,14 @@ export default function ConversationSidebar({
                   e.stopPropagation();
                   setActiveMenuId(conv.id);
                 }}
-                className={`relative w-full text-left py-2 px-2.5 rounded-lg text-xs transition-all flex flex-col gap-1 group ${
-                  activeView === 'chat' && activeConversationId === conv.id
+                className={`relative w-full text-left py-2 px-2.5 rounded-lg text-xs transition-all flex flex-col gap-1 group ${activeView === 'chat' && activeConversationId === conv.id
                     ? 'bg-zinc-800 text-purple-400 font-semibold border border-zinc-700'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'
-                }`}
+                  }`}
               >
                 {editingId === conv.id ? (
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
                     onBlur={saveEditing}
@@ -325,14 +299,14 @@ export default function ConversationSidebar({
                   />
                 ) : (
                   <div className="flex justify-between items-center w-full group">
-                    <button 
+                    <button
                       className="truncate flex-1 font-medium text-left mr-2"
                       onClick={() => onSelectConversation(conv.id)}
                     >
                       {conv.title}
                     </button>
                     <div className="opacity-0 group-hover:opacity-100 flex gap-1 items-center shrink-0">
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setActiveMenuId(activeMenuId === conv.id ? null : conv.id);
@@ -345,7 +319,7 @@ export default function ConversationSidebar({
                     </div>
                   </div>
                 )}
-                
+
                 {editingId !== conv.id && (
                   <div className="flex justify-between items-center w-full text-[9px] text-zinc-600 font-mono">
                     <span>{conv.createdAt}</span>
@@ -354,7 +328,7 @@ export default function ConversationSidebar({
 
                 {/* Dropdown Menu */}
                 {activeMenuId === conv.id && (
-                  <div 
+                  <div
                     className="absolute right-2 top-8 w-32 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 py-1 overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >

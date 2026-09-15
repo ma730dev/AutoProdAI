@@ -158,7 +158,7 @@ export default function Launchpad({
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           
-          {/* Video Looper Studio */}
+          {/* Video Studio & Editor */}
           <button
             onClick={onSelectLooper}
             className="h-44 text-left bg-gradient-to-b from-[#181822] to-[#121217] border border-purple-500/30 hover:border-purple-500/80 rounded-2xl p-4 flex flex-col justify-between hover:scale-[1.02] transition-all group shadow-lg cursor-pointer relative overflow-hidden"
@@ -168,17 +168,17 @@ export default function Launchpad({
                 🎬
               </div>
               <span className="text-[9px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold">
-                {lang === 'es' ? 'BUCLES & CLIPS' : 'LOOPS & CLIPS'}
+                {lang === 'es' ? 'EDITOR PRO' : 'PRO EDITOR'}
               </span>
             </div>
             <div className="space-y-1">
               <h4 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors">
-                {lang === 'es' ? 'Bucles, Clips & Video' : 'Loops, Clips & Video'}
+                {lang === 'es' ? 'Video Studio & Editor' : 'Video Studio & Editor'}
               </h4>
               <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-3">
                 {lang === 'es'
-                  ? 'Crea bucles de 1 a 3 horas, corta clips destacados de tus videos o comprime metraje sin perder calidad.'
-                  : 'Build 1 to 3 hour seamless loops, extract fast video clips, or compress footage without losing quality.'}
+                  ? 'Montaje en pistas, recorte de clips, pistas de música, bucles infinitos y exportación acelerada.'
+                  : 'Multi-track timeline, clip trimming, music tracks, seamless loops and GPU-accelerated export.'}
               </p>
             </div>
           </button>

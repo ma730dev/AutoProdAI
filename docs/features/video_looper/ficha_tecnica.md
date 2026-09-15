@@ -1,8 +1,8 @@
-# ⚙️ Ficha Técnica: Video Looper Studio
+# ⚙️ Ficha Técnica: Video Studio & Timeline Editor (con Looper Integrado)
 
 > **Ruta:** `docs/features/video_looper/ficha_tecnica.md`  
 > **Estado:** `✅ HECHO` (En producción / Operativo)  
-> **Capa Técnica:** FastAPI (Python 8000) + FFmpeg + Moviepy + React (Next.js)
+> **Capa Técnica:** Next.js + React (Client) + FastAPI (Python 8000) + FFmpeg + Moviepy
 
 ---
 
@@ -10,15 +10,15 @@
 
 ```mermaid
 flowchart TD
-    A[FileTree: Click o Drag & Drop] -->|Click .mp4/.mp3| B1[FilePreviewer: /workspace/raw Stream]
-    A -->|Drag & Drop a Looper| B2[VideoLooperStudio.tsx]
-    B2 -->|POST /video/scan_audio_folder| C[FastAPI: Escaneo de Pistas]
-    B2 -->|POST /video/inspect_media| D[FastAPI: ffprobe de Clips + has_audio]
-    B2 -->|POST /video/create_loop| E[Motor FFmpeg Local (CREATE_NO_WINDOW)]
-    E -->|Concat Demuxer + AQ-mode 2 + BT.709| F[Generación .mp4]
-    E -->|Thread progress_ticker| G1[GET /video/job_status: Progreso dinámico]
-    F -->|GET /video/preview/{job_id}| G2[Reproductor HTML5 con Regeneración]
-    F -->|Exportación Completa| H[Workspace Local /Videos]
+    A[FileTree / PC: Clips de Video & Audio] -->|Drag & Drop / Importar| B1[Media Bin: VideoStudio.tsx]
+    B1 -->|Añadir a Timeline| B2[TimelinePro.tsx: Pistas V1, A1, A2, T1, S1]
+    B1 -->|⚡ Herramienta Looper| B3[Sub-Módulo Looper: Bucle Express o Enlace a Audio]
+    B2 -->|Edición Interactiva: Trim Handles + Split| B4[Canvas Player: Viewport + Overlays DOM]
+    B2 -->|POST /video/render_timeline| E1[FastAPI: Multi-Clip Concat + GPU Pass]
+    B3 -->|POST /video/create_loop| E2[FastAPI: Stream Copy Loop 1:1]
+    E1 -->|Single-Pass Render| F[Exportación .mp4 a Workspace /Videos]
+    E2 -->|Concatenación Demuxer| F
+    E1 -->|GET /video/preview/{job_id}| G[Reproductor HTML5 Preview 30s]
 ```
 
 ---
@@ -27,58 +27,67 @@ flowchart TD
 
 | Endpoint | Método | Parámetros Clave | Descripción |
 |---|:---:|---|---|
+| `/video/render_timeline` | `POST` | `{ cuts, overlays, audio, resolution, quality, aspectRatio, output_folder_path, output_filename, is_preview }` | **Core:** Renderiza la composición multipista completa en una sola pasada de FFmpeg con aceleración GPU (NVENC/VideoToolbox), concatenación real de múltiples cortes virtuales con trimming, normalización SAR/FPS (`setsar=1,fps=30`), mezcla balanceada de audio y capas de texto/stickers. |
+| `/video/create_loop` | `POST` | `{ video_paths, duration_mode, target_duration_seconds, audio_folder_path, resolution, quality, mute_original_audio, is_preview, output_folder_path, output_filename }` | **Feature Looper:** Construye el bucle express en segundos usando *Stream Copy* (`-c:v copy`) para videos lofi o música continua de 1 a 3 horas. |
 | `/video/video_folders` | `GET` | Ninguno | Retorna la lista de carpetas `Videos` de cada proyecto y canal en el workspace. |
 | `/video/inspect_media` | `POST` | `{ file_path: string }` | Ejecuta `ffprobe` para extraer resolución, FPS, duración exacta, códec y detección booleana de pista de audio (`has_audio`). |
 | `/video/scan_audio_folder` | `POST` | `{ folder_path: string }` | Escanea recursivamente archivos de audio, suma duraciones y devuelve tiempo formateado `HH:MM:SS`. |
-| `/video/create_loop` | `POST` | `{ video_paths, duration_mode, target_duration_seconds, audio_folder_path, resolution, quality, mute_original_audio, is_preview, output_folder_path, output_filename }` | Construye el bucle, guarda en la carpeta seleccionada (previsualizador `preview_loop.mp4` o video final). Elimina el preview al renderizar completo. |
-| `/video/preview/{job_id}` | `GET` | `job_id` en path | Emite el stream de video resultante mediante `FileResponse` para el `<video>` HTML5 del estudio. |
-| `/video/job_status/{job_id}` | `GET` | `job_id` en path | Consulta el estado del render (`processing`, `completed`, `error`) con porcentaje dinámico calculado por `progress_ticker`. |
-| `/workspace/raw` | `GET` | `path: string` | Sirve cualquier archivo multimedia local (video/audio/imagen) por streaming HTTP con MIME type detectado para el inspector lateral. |
-
+| `/video/preview/{job_id}` | `GET` | `job_id` en path | Emite el stream de video resultante mediante `FileResponse` para el previsualizador del estudio. |
+| `/video/status/{job_id}` | `GET` | `job_id` en path | Consulta el estado del render (`queued`, `processing`, `completed`, `error`) con porcentaje dinámico calculado por `progress_ticker`. |
+| `/workspace/raw` | `GET` | `path: string` | Sirve cualquier archivo multimedia local (video/audio/imagen) por streaming HTTP (soporte 206 Range) para el canvas del editor. |
 
 ---
 
 ## 🎛️ 3. Parámetros de Calidad, Audio y Filtros FFmpeg
 
-1. **Anti-Pixelado & Perfiles CRF Puros:**
-   - Eliminación de VBV capping rígido (`-b:v`, `-maxrate`, `-bufsize` retirados) para evitar macrobloques y artefactos de compresión en fondos dinámicos u oscuros.
-   - Perfiles de compresión:
-     - **💎 Master / Ultra:** `-crf 14`, preset `slow` (o `faster` en preview).
-     - **✨ Alta Nitidez Pro:** `-crf 17`, preset `medium` (o `fast` en preview).
-     - **⚖️ Equilibrado:** `-crf 21`, preset `medium` (o `fast` en preview).
-   - Optimización psicovisual: `-x264-params aq-mode=2:no-fast-pskip=1` (mejora degradados sutiles y bordes finos).
-   - Espacio de color preservado: `-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv`.
-2. **Normalización de Relación de Aspecto & Resolución Original:**
-   - Soporta `"original"` (conserva la resolución nativa de los clips fuente calculada por `ffprobe`, sin aplicar escaladores ni letterboxing).
-   - Resoluciones estándar: 1080p (`1920x1080`), 4K (`3840x2160`), 720p (`1280x720`) y Vertical Shorts (`1080x1920`) con escalador `lanczos`.
-3. **Modo Stream Copy Inteligente (1:1 Cero Pérdida):**
-   - Cuando se conserva la resolución original y los clips tienen dimensiones idénticas, activa `-c:v copy`.
-   - **Ventaja crítica:** No descomprime ni re-codifica los fotogramas del video. Calidad 100% idéntica a la fuente original de YouTube, eliminando cualquier tipo de pixelación, banding o pérdida generacional, y reduciendo el tiempo de renderizado de minutos a segundos.
-4. **Pipeline Anti-Pixelado para Re-Codificación (Fondos Oscuros y Partículas):**
-   - En caso de re-escalar o cambiar formato, utiliza `aq-mode=3` (Adaptive Quantization con sesgo a escenas oscuras), `-tune film` y CRF de alta fidelidad (CRF 12 Master, CRF 15 High) para evitar macrobloques en videos espaciales, de estrellas o túneles de luz.
-5. **Pipeline de Concatenación Multiclip Secuencial en 2 Fases:**
-   - **Fase 1 (Master Cycle Synthesis):** Cuando el usuario añade múltiples clips a la línea de tiempo (`Clip 1 -> Clip 2 -> ...`), se ensambla primero un archivo maestro intermedio de un ciclo (`cycle_master_{job_id}.mp4`) usando `filter_complex concat=n=N:v=1:a=1` (o `a=0` si está muteado). Esto normaliza framerate, timebase y canales de audio, eliminando el fallo silencioso del demuxer cuando los clips provienen de fuentes o cámaras distintas.
-   - **Fase 2 (Looping a Escala):** El ciclo maestro sintetizado se repite hasta alcanzar la duración objetivo (`target_duration`) usando `-c:v copy` para una exportación ultra-rápida y sin degradación generacional.
-6. **Línea de Tiempo Interactiva & Carga Directa (PC y Workspace):**
-   - Interfaz visual de pista horizontal con arrastre drag-and-drop para reordenar clips sobre la marcha (`handleClipDragStart`, `handleClipDrop`).
-   - Botones de control por clip: desplazamiento lateral (`◀`, `▶`), duplicado directo (`📋`) y eliminación (`✕`).
-   - Carga nativa desde el explorador de archivos de Windows (`<input type="file">` e integración con `saveBinaryFile`) además de soporte de arrastre desde el Workspace Explorer de AutoProd.
-7. **Control de Audio Flexible:**
-   - `mute_original_audio = True`: Inyecta `-an` a la pista de video para silenciar el sonido ambiente de la cámara o clips fuente.
-   - Ensamble con carpeta de música: `-c:a aac -b:a 320k` manteniendo sincronización exacta.
-8. **Ejecución Silenciosa y Aislada en Windows:**
-   - Flag `CREATE_NO_WINDOW = 0x08000000` en todos los subprocesos de Python para prevenir la apertura de pestañas no deseadas en Windows Terminal.
-   - Flags `-nostdin` y `stdin=subprocess.DEVNULL` para evitar bloqueos del buffer en segundo plano.
-   - Script `start-motor.bat` configurado con `start "" /B` para desacoplar el servidor Uvicorn del cierre de la terminal.
+1. **Pipeline Multi-Clip Concat Robusto:**
+    - Cada corte en la secuencia aplica `trim=start={st}:end={et},setpts=PTS-STARTPTS,{scale_filter},setsar=1,fps=30`.
+    - Garantiza que clips provenientes de distintas cámaras, resoluciones o tasas de fotogramas se concatenen en `[v_concat]` sin artefactos ni desincronización de audio.
+2. **Mezcla Multipista Multi-Audio:**
+    - Soporte para audio original de cámara (`[a_cut_i]`), narración/voz (`[voice_fmt]`) y múltiples canciones en la pista A1 (`music_tracks`).
+    - Cada pista de música se posiciona de forma temporalmente arbitraria en la línea de tiempo mediante `adelay={start_ms}|{start_ms}`, se recorta a su duración con `atrim=0:{duration}`, se modula con `volume` y se combina en un bus unificado mediante `amix=inputs=N:duration=longest`.
+    - El bus de música resultante se mezcla con la voz y el audio de los clips manteniendo los niveles de volumen fijados por el creador.
+3. **Overlays & Stickers en Una Sola Pasada:**
+    - Encadenamiento dinámico de filtros `drawtext` habilitados por tiempo con `enable='between(t,start,end)'`.
+4. **Herramienta Looper Integrada (Cero Pérdida):**
+    - Modo 1-clic con `-c:v copy` para repetir clips continuos sin re-codificación, o modificador de clip en el inspector para que un fondo se extienda hasta el final de la música.
+5. **Canvas Interactivo con Arrastre y Sincronización Temporal Estricta:**
+    - **Arrastre Libre de Etiquetas:** Arrastre interactivo con el ratón sobre el viewport del Canvas para posicionar etiquetas y textos con snapping magnético al centro (50%).
+    - **Visibilidad Temporal Estricta:** Las etiquetas solo se renderizan durante el intervalo `[startTime, startTime + duration]`. Si el cabezal está fuera de rango, no se muestran en reproducción (mostrando modo ghost solo si está seleccionada en el inspector para edición).
+    - **Handles de Duración en Timeline:** Pista T1 con manillas laterales izquierda (In-point) y derecha (Duración) para estirar o encoger el tiempo exacto que debe durar cada etiqueta.
+    - **Paneo y Zoom del Video en Canvas:** Posibilidad de arrastrar el metraje dentro del viewport para re-encuadrar tomas horizontales en formatos verticales (9:16 Shorts), con controles de escala, pan X/Y y botón de centrado.
+    - **Reordenamiento Ágil de Cortes:** Botones `◀ Mover antes` y `Mover después ▶` más duplicador de clips `📋` en el inspector.
+6. **Multipista de Audio (Múltiples Canciones y Efectos en A1):**
+    - **Importación Múltiple:** Subida por lotes de archivos MP3/WAV/OGG/FLAC desde el explorador del PC.
+    - **Audición Rápida:** Botón de play/pause (`▶ / ⏸`) en la bandeja de medios para preescuchar cualquier canción antes de insertarla.
+    - **Inserción en Cascada:** Botón `⚡ Añadir Todas en Cascada` que dispone toda la biblioteca de audio secuencialmente una canción tras otra en la pista A1.
+    - **Recorte y Arrastre en Timeline:** Cada bloque de audio en la pista A1 cuenta con manillas izquierda y derecha para trimming y arrastre de cuerpo para reubicar su inicio temporal libremente.
+    - **Inspector de Audio:** Modulación limpia de volumen por canción (0% a 150%) y duplicación de pista, mientras que el recorte de duración y posicionamiento temporal se gestionan de forma visual y directa con los handles y arrastre en la línea de tiempo.
+7. **Inversión de Video (Reverse Playback):**
+    - **Modificador `is_reversed` por Clip:** Configurable desde el Inspector de Clip (conmutador `⏪ Invertir Video`) y menú contextual de clic derecho en la pista V1 de la línea de tiempo.
+    - **Cálculo Matemático en Vivo:** El Canvas DOM resuelve el fotograma invertido instantáneamente (`cut.isReversed ? Math.max(cut.startTime, cut.endTime - elapsed) : cut.startTime + elapsed`).
+    - **Renderizado Final FFmpeg:** Inyección de los filtros de inversión `reverse` en el pipeline de video y `areverse` en el canal de audio del corte para generar el rebobinado perfecto sin desincronizaciones.
+8. **Subtitulador IA Integrado (Pista S1 & Whisper):**
+    - **Acceso Unificado:** Botón de acción directa `🎧 Subtitular IA` en la barra superior del Video Studio y pestaña `🎧 Subs` en la bandeja de recursos (sin silos ni pantallas aisladas).
+    - **Transcripción con Whisper:** Detección de idioma, selección de motor (CPU local, GPU CUDA o API OpenAI) y procesamiento asíncrono en segundo plano.
+    - **Pista S1 en Timeline:** Bloques de subtítulos colocados de forma precisa en la pista S1 de `TimelinePro`.
+    - **Live Canvas Subtitle Overlay:** Renderizado de subtítulo activo en el visor de Canvas con estilo dinámico de alta visibilidad (TikTok/Reels).
+    - **Edición y Exportación:** Edición en caliente de texto de cada bloque, importación de subtítulos `.srt`/`.vtt` y quemado automático en el video exportado mediante `-vf subtitles=...`.
+9. **Soporte de Alta Capacidad para Videos Largos (10m, 30m, 1h+ y Multi-Gigabyte):**
+    - **Streaming Multipart Directo (`/workspace/upload_stream`):** Eliminación del cuello de botella de `FileReader.readAsDataURL` (Base64) que saturaba el límite de 512MB de V8 en el navegador. La subida se realiza por chunks directos a disco sin huella de RAM.
+    - **Escaneo Automático de Carpeta Activa (`/workspace/folder_videos`):** La bandeja de medios carga y analiza automáticamente todos los videos existentes en `targetFolder` al montar o cambiar de canal.
+    - **Duración Real Inmediata:** Los clips se insertan con su duración real analizada por `ffprobe`, eliminando el antiguo límite provisional de 15 segundos.
+    - **Búfer de Bucle Eficiente en FFmpeg:** Se sustituyó `size=30000` (que consumía 93 GB de RAM y limitaba a 16m) por cálculo exacto de fotogramas (`loop_frames = max(30, int(round(total_cuts_duration * 30)))`), permitiendo renderizar bucles de 1 a 3 horas sin saturación de memoria.
+    - **Regla Adaptativa & Auto-Fit en Timeline:** La regla de tiempo limita dinámicamente las marcas a un máximo de 300 elementos DOM y aplica zoom automático inteligente (`handleFitToView`), evitando congelamientos en timelines de larga duración.
 
 ---
 
 ## 📂 4. Archivos Involucrados en el Repositorio
 
-- [`controlador/routers/video_looper.py`](file:///e:/autoprod/controlador/routers/video_looper.py): Router FastAPI con subprocesos seguros, ticker de progreso, profiles CRF y muteado de audio.
-- [`controlador/routers/workspace.py`](file:///e:/autoprod/controlador/routers/workspace.py): Endpoint `/workspace/raw` para streaming de archivos multimedia locales.
-- [`lib/controlador-client.ts`](file:///e:/autoprod/lib/controlador-client.ts): Cliente TypeScript con `muteOriginalAudio` y `createVideoLoop`.
-- [`components/dashboard/VideoLooperStudio.tsx`](file:///e:/autoprod/components/dashboard/VideoLooperStudio.tsx): Interfaz con Drop Zone, toggle de audio, previewer con loader animado y botón de regeneración.
-- [`components/dashboard/FilePreviewer.tsx`](file:///e:/autoprod/components/dashboard/FilePreviewer.tsx): Reproductor HTML5 integrado para previsualizar `.mp4`, `.mov`, `.mkv`, `.webm` y archivos de audio al seleccionarlos en el árbol.
-- [`components/dashboard/FileTree.tsx`](file:///e:/autoprod/components/dashboard/FileTree.tsx): Eventos de clic que disparan la reproducción de archivos de video y audio en el inspector lateral.
-- [`start-motor.bat`](file:///e:/autoprod/start-motor.bat): Lanzador desacoplado en segundo plano del motor local para Windows.
+- [`components/dashboard/VideoStudio.tsx`](file:///e:/autoprod/components/dashboard/VideoStudio.tsx): **Componente Core.** Editor de video con Media Bin (clips, audio, texto, subtítulos, looper), Canvas interactivo, Inspector contextual, subtitulado Whisper, reversa y soporte para videos largos.
+- [`components/dashboard/timeline/TimelinePro.tsx`](file:///e:/autoprod/components/dashboard/timeline/TimelinePro.tsx): Línea de tiempo multipista con regla adaptativa anti-lag, auto-fit para proyectos largos y manillas interactivas.
+- [`components/dashboard/VideoLooperStudio.tsx`](file:///e:/autoprod/components/dashboard/VideoLooperStudio.tsx): Re-export de compatibilidad hacia atrás para `VideoStudio`.
+- [`controlador/routers/video_looper.py`](file:///e:/autoprod/controlador/routers/video_looper.py): Router FastAPI con `/video/render_timeline` (Multi-clip pipeline con `reverse`/`areverse`, búfer eficiente para videos largos y GPU) y `/video/create_loop`.
+- [`controlador/routers/workspace.py`](file:///e:/autoprod/controlador/routers/workspace.py): Endpoints `/workspace/upload_stream` y `/workspace/folder_videos` para streaming directo de archivos grandes sin Base64.
+- [`lib/controlador-client.ts`](file:///e:/autoprod/lib/controlador-client.ts): Cliente TypeScript con `uploadStreamFile` y `getFolderVideos`.
+
