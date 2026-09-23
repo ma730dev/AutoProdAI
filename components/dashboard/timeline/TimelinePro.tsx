@@ -1236,12 +1236,6 @@ export default function TimelinePro({
                       </div>
                     );
                   })}
-                          <span>{formatTimecode(cut.startTime)}</span>
-                          <span>{cut.duration.toFixed(1)}s</span>
-                        </div>
-                      </div>
-                    );
-                  })}
 
                   {/* Botón flotante para subir más canciones */}
                   <div

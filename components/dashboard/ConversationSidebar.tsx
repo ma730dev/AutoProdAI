@@ -28,6 +28,7 @@ interface Props {
   onOpenAssets?: () => void;
   onOpenImages?: () => void;
   onLinkWorkspace?: () => void;
+  onToggleCollapse?: () => void;
 }
 
 export default function ConversationSidebar({
@@ -51,6 +52,7 @@ export default function ConversationSidebar({
   onOpenAssets,
   onOpenImages,
   onLinkWorkspace,
+  onToggleCollapse,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -83,6 +85,25 @@ export default function ConversationSidebar({
 
   return (
     <div className="flex flex-col h-full bg-zinc-950 border-r border-zinc-800">
+
+      {/* Sidebar Header with Collapse button */}
+      <div className="h-10 px-3.5 border-b border-zinc-800/80 bg-zinc-950 flex items-center justify-between shrink-0">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+          <span>📁</span>
+          <span>{lang === 'es' ? 'Navegación & Canales' : 'Explorer & Channels'}</span>
+        </span>
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            className="p-1 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+            title={lang === 'es' ? 'Ocultar panel izquierdo' : 'Collapse left panel'}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto minimal-scrollbar p-4 flex flex-col gap-6">
@@ -162,7 +183,7 @@ export default function ConversationSidebar({
                   {onAddNode && (
                     <button
                       onClick={() => onAddNode(workspacePath, 'channel')}
-                      className="opacity-50 group-hover:opacity-100 px-1.5 py-0.5 rounded bg-zinc-700 hover:bg-indigo-600 text-white text-[10px] transition-all"
+                      className="opacity-50 group-hover:opacity-100 px-1.5 py-0.5 rounded bg-zinc-700 hover:bg-indigo-600 text-white text-[10px] transition-all cursor-pointer"
                       title="Añadir Canal"
                     >
                       + Añadir
@@ -181,182 +202,78 @@ export default function ConversationSidebar({
           </div>
         </div>
 
-        <span className="h-[1px] bg-zinc-800/50 shrink-0" />
+        {/* ── MÓDULOS & ESTUDIOS ── */}
+        <div className="space-y-1.5 shrink-0">
+          <div className="flex items-center justify-between px-1 mb-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+              {lang === 'es' ? 'Estudios de Creación' : 'Creation Studios'}
+            </span>
+          </div>
 
-        {/* New Conversation Button */}
-        <button
-          onClick={onNewConversation}
-          className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-95 rounded-lg text-xs font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
-        >
-          💬 {lang === 'es' ? 'Nueva Conversación' : 'New Conversation'}
-        </button>
 
-        {/* Video Timeline Studio Button */}
-        {onOpenLooper && (
-          <button
-            onClick={onOpenLooper}
-            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'looper'
+          {/* Video Timeline Studio Button */}
+          {onOpenLooper && (
+            <button
+              onClick={onOpenLooper}
+              className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'looper'
                 ? 'bg-purple-950/70 border-purple-500 text-purple-200 shadow-sm shadow-purple-500/20'
                 : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
-              }`}
-          >
-            <span className="flex items-center gap-2">
-              <span>🎬</span>
-              <span>{lang === 'es' ? 'Video Studio (Editor)' : 'Video Studio (Editor)'}</span>
-            </span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold font-mono">
-              PRO
-            </span>
-          </button>
-        )}
+                }`}
+            >
+              <span className="flex items-center gap-2">
+                <span>🎬</span>
+                <span>Video Studio</span>
+              </span>
+            </button>
+          )}
 
-        {/* Image Creator Studio Button */}
-        {onOpenImages && (
-          <button
-            onClick={onOpenImages}
-            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'images'
+          {/* Image Creator Studio Button */}
+          {onOpenImages && (
+            <button
+              onClick={onOpenImages}
+              className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'images'
                 ? 'bg-purple-950/70 border-purple-500 text-purple-200 shadow-sm shadow-purple-500/20'
                 : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
-              }`}
-          >
-            <span className="flex items-center gap-2">
-              <span>🎨</span>
-              <span>{lang === 'es' ? 'Creador de Imágenes' : 'AI Image Studio'}</span>
-            </span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold font-mono">
-              DALL-E
-            </span>
-          </button>
-        )}
+                }`}
+            >
+              <span className="flex items-center gap-2">
+                <span>🎨</span>
+                <span>Image Studio</span>
+              </span>
+            </button>
+          )}
 
-        {/* Asset Library Button */}
-        {onOpenAssets && (
-          <button
-            onClick={onOpenAssets}
-            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'assets'
+          {/* Asset Library Button */}
+          {onOpenAssets && (
+            <button
+              onClick={onOpenAssets}
+              className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'assets'
                 ? 'bg-indigo-950/70 border-indigo-500 text-indigo-200 shadow-sm shadow-indigo-500/20'
                 : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
-              }`}
-          >
-            <span className="flex items-center gap-2">
-              <span>🗃️</span>
-              <span>{lang === 'es' ? 'Biblioteca de Recursos' : 'Asset Library'}</span>
-            </span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold font-mono">
-              CRUD
-            </span>
-          </button>
-        )}
+                }`}
+            >
+              <span className="flex items-center gap-2">
+                <span>🗃️</span>
+                <span>{lang === 'es' ? 'Biblioteca de Recursos' : 'Asset Library'}</span>
+              </span>
+            </button>
+          )}
 
-        {/* Text-to-Speech Studio Button */}
-        {onOpenTTS && (
-          <button
-            onClick={onOpenTTS}
-            className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'tts'
+          {/* Text-to-Speech Studio Button */}
+          {onOpenTTS && (
+            <button
+              onClick={onOpenTTS}
+              className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'tts'
                 ? 'bg-purple-950/70 border-purple-500 text-purple-200 shadow-sm shadow-purple-500/20'
                 : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
-              }`}
-          >
-            <span className="flex items-center gap-2">
-              <span>🎙️</span>
-              <span>{lang === 'es' ? 'Locución & TTS' : 'Voiceover & TTS'}</span>
-            </span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold font-mono">
-              VOZ
-            </span>
-          </button>
-        )}
-
-
-        {/* Conversations History */}
-        <div className="space-y-2 shrink-0">
-          <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-            {lang === 'es' ? 'Historial de Chats' : 'Chat History'}
-          </h4>
-          <div className="space-y-1">
-            {conversations.map(conv => (
-              <div
-                key={conv.id}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setActiveMenuId(conv.id);
-                }}
-                className={`relative w-full text-left py-2 px-2.5 rounded-lg text-xs transition-all flex flex-col gap-1 group ${activeView === 'chat' && activeConversationId === conv.id
-                    ? 'bg-zinc-800 text-purple-400 font-semibold border border-zinc-700'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'
-                  }`}
-              >
-                {editingId === conv.id ? (
-                  <input
-                    type="text"
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    onBlur={saveEditing}
-                    onKeyDown={(e) => e.key === 'Enter' && saveEditing()}
-                    autoFocus
-                    className="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 px-2 py-1 rounded outline-none"
-                  />
-                ) : (
-                  <div className="flex justify-between items-center w-full group">
-                    <button
-                      className="truncate flex-1 font-medium text-left mr-2"
-                      onClick={() => onSelectConversation(conv.id)}
-                    >
-                      {conv.title}
-                    </button>
-                    <div className="opacity-0 group-hover:opacity-100 flex gap-1 items-center shrink-0">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuId(activeMenuId === conv.id ? null : conv.id);
-                        }}
-                        className="text-zinc-500 hover:text-white px-1.5 py-0.5 rounded hover:bg-zinc-700"
-                        title="Opciones"
-                      >
-                        ⋮
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {editingId !== conv.id && (
-                  <div className="flex justify-between items-center w-full text-[9px] text-zinc-600 font-mono">
-                    <span>{conv.createdAt}</span>
-                  </div>
-                )}
-
-                {/* Dropdown Menu */}
-                {activeMenuId === conv.id && (
-                  <div
-                    className="absolute right-2 top-8 w-32 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 py-1 overflow-hidden"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      onClick={() => {
-                        setActiveMenuId(null);
-                        startEditing(conv);
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 flex items-center gap-2"
-                    >
-                      ✏️ Renombrar
-                    </button>
-                    {onDeleteConversation && (
-                      <button
-                        onClick={() => {
-                          setActiveMenuId(null);
-                          onDeleteConversation(conv.id);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 flex items-center gap-2"
-                      >
-                        🗑️ Eliminar
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+                }`}
+            >
+              <span className="flex items-center gap-2">
+                <span>🎙️</span>
+                <span>{lang === 'es' ? 'Locución & TTS' : 'Voiceover & TTS'}</span>
+              </span>
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -5,8 +5,7 @@ import subprocess
 import base64
 from datetime import datetime
 from pathlib import Path
-import mimetypes
-from fastapi import APIRouter, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -612,35 +611,51 @@ def save_binary_file(req: SaveBinaryFileRequest):
 
 @router.post("/upload_stream")
 async def upload_stream(
-    file: UploadFile = File(...),
-    target_path: Optional[str] = Form(None),
-    subfolder: Optional[str] = Form("Videos")
+    request: Request,
+    filename: Optional[str] = Query(None),
+    target_path: Optional[str] = Query(None),
+    subfolder: Optional[str] = Query("Videos")
 ):
     """
     Recibe archivos de video o audio de CUALQUIER tamaño (100MB, 2GB, 10GB+)
-    por streaming multipart en trozos directamente a disco, sin pasar por Base64 ni colapsar la RAM.
+    por streaming de chunks directamente a disco, sin requerir python-multipart
+    ni pasar por Base64 ni colapsar la RAM.
     """
     try:
+        import urllib.parse
+        raw_name = filename or request.headers.get("x-filename") or "video.mp4"
+        decoded_name = urllib.parse.unquote(raw_name)
+        safe_filename = Path(decoded_name).name or "video.mp4"
+
+        raw_target = target_path or request.headers.get("x-target-path")
+        decoded_target = urllib.parse.unquote(raw_target) if raw_target else None
+
+        raw_sub = subfolder or request.headers.get("x-subfolder") or "Videos"
+        decoded_sub = urllib.parse.unquote(raw_sub) if raw_sub else "Videos"
+
         ws_root = default_workspace_path()
-        if target_path and target_path.strip() not in [".", "/"]:
-            dest_dir = Path(target_path.strip())
+        if decoded_target and decoded_target.strip() not in [".", "/"]:
+            dest_dir = Path(decoded_target.strip())
             if not dest_dir.is_absolute():
                 dest_dir = (ws_root / dest_dir).resolve()
         else:
-            dest_dir = (ws_root / (subfolder or "Videos")).resolve()
+            dest_dir = (ws_root / (decoded_sub or "Videos")).resolve()
 
         dest_dir.mkdir(parents=True, exist_ok=True)
-        out_file_path = (dest_dir / file.filename).resolve()
+        out_file_path = (dest_dir / safe_filename).resolve()
 
         with open(out_file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            async for chunk in request.stream():
+                if chunk:
+                    buffer.write(chunk)
 
-        size_mb = round(out_file_path.stat().st_size / (1024 * 1024), 2)
+        file_size = out_file_path.stat().st_size
+        size_mb = round(file_size / (1024 * 1024), 2)
         return {
             "status": "success",
-            "name": file.filename,
+            "name": safe_filename,
             "path": out_file_path.as_posix(),
-            "size_bytes": out_file_path.stat().st_size,
+            "size_bytes": file_size,
             "size_mb": size_mb
         }
     except Exception as e:

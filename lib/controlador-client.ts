@@ -624,18 +624,26 @@ export class ControladorClient {
     subfolder: string = 'Videos'
   ): Promise<{ status: string; path: string; name: string; size_bytes: number; size_mb: number }> {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      if (targetPath) formData.append('target_path', targetPath);
-      formData.append('subfolder', subfolder);
+      const baseUrl = getControladorUrl();
+      const params = new URLSearchParams();
+      params.set('filename', file.name);
+      if (targetPath) params.set('target_path', targetPath);
+      params.set('subfolder', subfolder);
 
-      const response = await fetch(`${getControladorUrl()}/workspace/upload_stream`, {
+      const response = await fetch(`${baseUrl}/workspace/upload_stream?${params.toString()}`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'X-Filename': encodeURIComponent(file.name),
+          ...(targetPath ? { 'X-Target-Path': encodeURIComponent(targetPath) } : {}),
+          'X-Subfolder': encodeURIComponent(subfolder),
+        },
+        body: file,
       });
+
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(err.detail || 'Error en subida de archivo');
+        throw new Error(err.detail || `Error en subida de archivo (${response.status})`);
       }
       return await response.json();
     } catch (error) {

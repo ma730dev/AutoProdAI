@@ -12,11 +12,12 @@
 
 ---
 
-## 🚀 2. Los 4 Pilares del Sistema en la Landing (`✅ EN PROCESO`)
+## 🚀 2. Los 4 Pilares del Sistema y el Layout de 3 Paneles (`✅ HECHO`)
 - **CREA:** Convierte tus ideas en contenido con intención (investigación de temas, desarrollo de guiones y diseño de portadas).
 - **PRODUCE:** Todo lo que necesitas para crear, en un solo lugar (bucles de 1 a 3 horas en 4K, clips rápidos y subtítulos palabra por palabra).
 - **ANALIZA:** Entiende qué está pasando con tus canales (referencias de nicho, ángulos temáticos y memoria histórica).
 - **ESCALA:** Más capacidad. Más control. Menos trabajo repetitivo (gestión multicanal, cronograma de producción y workflow ágil).
+- **Consola de 3 Paneles (Workspace + Canvas + Copilot):** Elimina el cambio brusco de pantallas; el creador mantiene su línea de tiempo o canvas activo en el centro mientras colabora en paralelo con el Copilot IA a la derecha.
 
 ---
 

@@ -32,6 +32,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const hasPythonSource = fs.existsSync(path.join(cwd, 'main.py'));
+
+    // Si hay procesos residuales huérfanos del binario antiguo autoprod-motor.exe, los cerramos para liberar el puerto
+    if (process.platform === 'win32') {
+      try {
+        const { execSync } = await import('child_process');
+        execSync('taskkill /F /IM autoprod-motor.exe', { stdio: 'ignore' });
+      } catch {
+        // Silencioso si no existía el proceso
+      }
+    }
+
+    // Si tenemos los scripts fuente de Python y el interprete, ejecutamos el código vivo
+    if (hasPythonSource && pythonCmd) {
+      const child = spawn(pythonCmd, ['-m', 'uvicorn', 'main:app', '--port', String(port)], {
+        cwd,
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+        env: { ...process.env, PATH: `${localBin}${path.delimiter}${process.env.PATH}` }
+      });
+      child.unref();
+      return NextResponse.json({ success: true, message: 'Motor local arrancado en segundo plano (Python)' });
+    }
+
     const compiledExe = path.join(process.cwd(), 'dist', 'autoprod-motor.exe');
     const localExe = path.join(process.cwd(), 'autoprod-motor.exe');
 
@@ -48,18 +73,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: 'Motor compilado arrancado en segundo plano' });
     }
 
-    // Spawn the python process detached so it runs in the background
-    const child = spawn(pythonCmd, ['-m', 'uvicorn', 'main:app', '--port', String(port)], {
-      cwd,
-      detached: true,
-      stdio: 'ignore', // Ignoramos stdout/stderr para que no bloquee Next.js
-      windowsHide: true,
-      env: { ...process.env, PATH: `${localBin}${path.delimiter}${process.env.PATH}` }
-    });
-    
-    child.unref();
-
-    return NextResponse.json({ success: true, message: 'Motor arrancado en segundo plano' });
+    return NextResponse.json(
+      { success: false, error: 'No se encontró el ejecutable ni el entorno Python para arrancar el motor local.' },
+      { status: 500 }
+    );
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

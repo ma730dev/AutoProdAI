@@ -20,6 +20,10 @@ export default function GoogleLoginButton({ onError }: GoogleLoginButtonProps) {
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/api/auth/callback`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         },
       });
       if (error) throw error;

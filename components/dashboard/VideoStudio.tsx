@@ -203,6 +203,7 @@ export default function VideoStudio({
   const [renderMessage, setRenderMessage] = useState<string>('');
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
   const [completedOutputPath, setCompletedOutputPath] = useState<string | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
 
   // ── ESTADOS DE INTERACCIÓN CON EL CANVAS (ARRASTRE DE ETIQUETAS Y PAN/ZOOM DE VIDEO) ──
   const [canvasDraggingOverlayId, setCanvasDraggingOverlayId] = useState<string | null>(null);
@@ -485,14 +486,21 @@ export default function VideoStudio({
     toast.success(lang === 'es' ? `Clip añadido: ${fileName}` : `Clip added: ${fileName}`);
   };
 
-  // Subir videos desde explorador de archivos del PC (Streaming Directo sin colapso de Base64)
+  // Subir videos desde explorador de archivos del PC (Streaming Directo con fallback)
   const processUploadedFiles = async (files: File[]) => {
-    const toastId = toast.loading(lang === 'es' ? `Importando ${files.length} video(s)...` : `Importing ${files.length} video(s)...`);
-    try {
-      for (const file of files) {
-        const isVid = ['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v'].some(ext => file.name.toLowerCase().endsWith(ext));
-        if (!isVid) continue;
+    const videoFiles = Array.from(files).filter(file =>
+      file.type.startsWith('video/') ||
+      ['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v', '.ts'].some(ext => file.name.toLowerCase().endsWith(ext))
+    );
 
+    if (videoFiles.length === 0) {
+      toast.info(lang === 'es' ? 'No se detectaron archivos de video compatibles' : 'No supported video files detected');
+      return;
+    }
+
+    const toastId = toast.loading(lang === 'es' ? `Importando ${videoFiles.length} video(s)...` : `Importing ${videoFiles.length} video(s)...`);
+    try {
+      for (const file of videoFiles) {
         const saved = await ControladorClient.uploadStreamFile(file, targetFolder || undefined, 'Videos');
 
         if (saved && saved.path) {
@@ -516,9 +524,9 @@ export default function VideoStudio({
       player.pause();
       setAuditioningAudioPath(null);
     } else {
-      player.src = `${getControladorUrl()}/workspace/raw?path=${encodeURIComponent(audioPath)}`;
+      player.src = `/api/assets/stream?path=${encodeURIComponent(audioPath)}`;
       player.load();
-      player.play().catch(() => {});
+      player.play().catch(() => { });
       setAuditioningAudioPath(audioPath);
     }
   };
@@ -530,7 +538,7 @@ export default function VideoStudio({
       try {
         const meta = await ControladorClient.inspectMedia(filePath);
         if (meta.duration_seconds) effectiveDuration = meta.duration_seconds;
-      } catch {}
+      } catch { }
     }
     const finalDuration = effectiveDuration && effectiveDuration > 0 ? effectiveDuration : 180;
 
@@ -642,7 +650,7 @@ export default function VideoStudio({
               durationFormatted = meta.duration_formatted || `${Math.round(meta.duration_seconds)}s`;
             }
             if (meta.size_mb) sizeMb = meta.size_mb;
-          } catch {}
+          } catch { }
 
           // Anexar a la bandeja de audio del proyecto
           setProjectAudioList(prev => {
@@ -955,7 +963,7 @@ export default function VideoStudio({
   const activeVideoSrc = useMemo(() => {
     if (previewVideoUrl) return previewVideoUrl;
     if (!currentResolvedClip) return null;
-    return `${getControladorUrl()}/workspace/raw?path=${encodeURIComponent(currentResolvedClip.cut.clipPath)}`;
+    return `/api/assets/stream?path=${encodeURIComponent(currentResolvedClip.cut.clipPath)}`;
   }, [previewVideoUrl, currentResolvedClip]);
 
   // ── RELOJ MAESTRO DE REPRODUCCIÓN (REQUESTANIMATIONFRAME) ──
@@ -1039,7 +1047,7 @@ export default function VideoStudio({
         video.currentTime = targetOffset;
         video.muted = muteOriginalAudio;
         if (isPlayingRef.current) {
-          video.play().catch(() => {});
+          video.play().catch(() => { });
         }
         video.removeEventListener('canplay', onCanPlay);
       };
@@ -1050,7 +1058,7 @@ export default function VideoStudio({
         video.currentTime = targetOffset;
       }
       if (isPlaying && video.paused && video.readyState >= 2) {
-        video.play().catch(() => {});
+        video.play().catch(() => { });
       }
     }
   }, [currentResolvedClip?.cut.clipPath, currentResolvedClip?.offsetInClip, isPlaying, muteOriginalAudio]);
@@ -1075,7 +1083,7 @@ export default function VideoStudio({
       }
 
       const activeCut = currentResolvedAudioCut;
-      const expectedAudioSrc = `${getControladorUrl()}/workspace/raw?path=${encodeURIComponent(activeCut.audioPath)}`;
+      const expectedAudioSrc = `/api/assets/stream?path=${encodeURIComponent(activeCut.audioPath)}`;
       const targetAudioOffset = Math.max(0, playheadTime - activeCut.startTime);
       const effectiveVol = Math.max(0, Math.min(1, musicVolume * (activeCut.volume ?? 1)));
       const currentSrc = audio.currentSrc || audio.src || '';
@@ -1089,7 +1097,7 @@ export default function VideoStudio({
           audio.currentTime = targetAudioOffset;
           audio.volume = effectiveVol;
           if (isPlayingRef.current) {
-            audio.play().catch(() => {});
+            audio.play().catch(() => { });
           }
           audio.removeEventListener('canplay', onCanPlay);
         };
@@ -1101,7 +1109,7 @@ export default function VideoStudio({
           audio.currentTime = targetAudioOffset;
         }
         if (isPlaying && audio.paused && audio.readyState >= 2) {
-          audio.play().catch(() => {});
+          audio.play().catch(() => { });
         } else if (!isPlaying && !audio.paused) {
           audio.pause();
         }
@@ -1115,7 +1123,7 @@ export default function VideoStudio({
       return;
     }
 
-    const expectedAudioSrc = `${getControladorUrl()}/workspace/raw?path=${encodeURIComponent(musicAudioPath)}`;
+    const expectedAudioSrc = `/api/assets/stream?path=${encodeURIComponent(musicAudioPath)}`;
     const currentSrc = audio.currentSrc || audio.src || '';
     const hasDifferentSource = !currentSrc.includes(encodeURIComponent(musicAudioPath)) && !currentSrc.endsWith(musicAudioPath);
 
@@ -1128,7 +1136,7 @@ export default function VideoStudio({
         audio.currentTime = dur > 0 ? (playheadTimeRef.current % dur) : 0;
         audio.volume = musicVolume;
         if (isPlayingRef.current) {
-          audio.play().catch(() => {});
+          audio.play().catch(() => { });
         }
         audio.removeEventListener('canplay', onCanPlay);
       };
@@ -1142,7 +1150,7 @@ export default function VideoStudio({
         audio.currentTime = targetAudioTime;
       }
       if (isPlaying && audio.paused && audio.readyState >= 2) {
-        audio.play().catch(() => {});
+        audio.play().catch(() => { });
       } else if (!isPlaying && !audio.paused) {
         audio.pause();
       }
@@ -1433,7 +1441,7 @@ export default function VideoStudio({
 
           {/* Botón Exportar Video Final */}
           <button
-            onClick={() => handleExecuteRender(false)}
+            onClick={() => setIsExportModalOpen(true)}
             disabled={isRenderingPreview || isRenderingFull}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-950/50 transition-all cursor-pointer disabled:opacity-50"
           >
@@ -1591,11 +1599,10 @@ export default function VideoStudio({
                     return (
                       <div
                         key={song.path || idx}
-                        className={`p-2 rounded-xl border flex flex-col gap-1.5 text-xs transition-all ${
-                          isAuditioning
+                        className={`p-2 rounded-xl border flex flex-col gap-1.5 text-xs transition-all ${isAuditioning
                             ? 'bg-indigo-950/60 border-indigo-500/70 ring-1 ring-indigo-500/40'
                             : 'bg-zinc-950/80 border-zinc-800/80 hover:border-indigo-800/60'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 truncate">
@@ -1603,11 +1610,10 @@ export default function VideoStudio({
                             <button
                               type="button"
                               onClick={() => toggleAuditionSong(song.path)}
-                              className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-all ${
-                                isAuditioning
+                              className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-all ${isAuditioning
                                   ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/50 animate-pulse'
                                   : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
-                              }`}
+                                }`}
                               title={isAuditioning ? 'Pausar audición' : 'Escuchar vista previa'}
                             >
                               <span className="text-[10px]">{isAuditioning ? '⏸' : '▶'}</span>
@@ -1870,11 +1876,10 @@ export default function VideoStudio({
                         <div
                           key={sub.id}
                           onClick={() => setPlayheadTime(sub.start)}
-                          className={`p-2 rounded-xl border transition-all text-xs cursor-pointer flex flex-col gap-1 ${
-                            isActive
+                          className={`p-2 rounded-xl border transition-all text-xs cursor-pointer flex flex-col gap-1 ${isActive
                               ? 'bg-amber-950/40 border-amber-500/80 text-amber-200 ring-1 ring-amber-500/40'
                               : 'bg-zinc-950/80 border-zinc-800/80 hover:border-zinc-700 text-zinc-300'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
                             <span className="font-bold text-amber-400/90">#{idx + 1}</span>
@@ -2035,15 +2040,14 @@ export default function VideoStudio({
                     cursor: canvasDraggingOverlayId === ov.id ? 'grabbing' : 'grab',
                     zIndex: isSelected ? 30 : 20,
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold uppercase select-none transition-all shadow-2xl backdrop-blur-md flex items-center gap-1.5 border group cursor-grab active:cursor-grabbing ${
-                    isGhost
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold uppercase select-none transition-all shadow-2xl backdrop-blur-md flex items-center gap-1.5 border group cursor-grab active:cursor-grabbing ${isGhost
                       ? 'opacity-65 border-dashed border-amber-400 bg-black/85 text-amber-300 ring-1 ring-amber-400'
                       : ov.type === 'subscribe_cta'
-                      ? 'bg-red-600/95 text-white border-white/80'
-                      : ov.type === 'like_cta'
-                      ? 'bg-blue-600/95 text-white border-white/80'
-                      : 'bg-zinc-900/95 text-purple-200 border-purple-500/80'
-                  } ${isSelected ? 'ring-2 ring-purple-400 ring-offset-2 ring-offset-black scale-105' : 'hover:ring-1 hover:ring-white/50'}`}
+                        ? 'bg-red-600/95 text-white border-white/80'
+                        : ov.type === 'like_cta'
+                          ? 'bg-blue-600/95 text-white border-white/80'
+                          : 'bg-zinc-900/95 text-purple-200 border-purple-500/80'
+                    } ${isSelected ? 'ring-2 ring-purple-400 ring-offset-2 ring-offset-black scale-105' : 'hover:ring-1 hover:ring-white/50'}`}
                   title={`Arrastra para mover en el video (X: ${ov.xPercent}%, Y: ${ov.yPercent}%) • Activo: ${ov.startTime.toFixed(1)}s a ${(ov.startTime + ov.duration).toFixed(1)}s`}
                 >
                   <span>{ov.type === 'subscribe_cta' ? '🔔' : (ov.type === 'like_cta' ? '👍' : '🏷️')}</span>
@@ -2144,7 +2148,7 @@ export default function VideoStudio({
 
         {/* ── PANEL DERECHO: INSPECTOR CONTEXTUAL (3 COLS) ──────────────────── */}
         <div className="lg:col-span-3 bg-[#0e0e13] border border-zinc-800/80 rounded-2xl p-3 flex flex-col gap-3 overflow-y-auto minimal-scrollbar">
-          
+
           {/* CASO A: Clip de Video Seleccionado */}
           {selectedCut ? (
             <div className="flex flex-col gap-2.5">
@@ -2598,71 +2602,20 @@ export default function VideoStudio({
               </button>
             </div>
           ) : (
-            /* CASO D: Configuración General del Proyecto & Exportación */
-            <div className="flex flex-col gap-2.5 text-xs">
-              <div className="flex items-center gap-1.5 pb-1.5 border-b border-zinc-800/60">
-                <span className="text-zinc-400">⚙️</span>
-                <span className="font-bold text-white uppercase tracking-wider text-[11px]">
-                  Configuración del Proyecto
+            /* CASO D: Estado de reposo del Inspector (sin selección activa) */
+            <div className="flex flex-col items-center justify-center text-center p-6 my-auto gap-3 text-zinc-500">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-2xl shadow-inner">
+                🎛️
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-zinc-300">
+                  {lang === 'es' ? 'Inspector de Elementos' : 'Element Inspector'}
                 </span>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] text-zinc-400 font-bold">Nombre del Archivo</label>
-                <input
-                  type="text"
-                  value={outputFilename}
-                  onChange={(e) => setOutputFilename(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 font-mono text-xs"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] text-zinc-400 font-bold">Resolución de Exportación</label>
-                <select
-                  value={resolution}
-                  onChange={(e) => setResolution(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 text-xs cursor-pointer"
-                >
-                  <option value="1080p">📺 1080p Full HD</option>
-                  <option value="4k">💎 4K Ultra HD</option>
-                  <option value="720p">⚡ 720p Rápido</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] text-zinc-400 font-bold">Calidad CRF (H.264)</label>
-                <select
-                  value={quality}
-                  onChange={(e) => setQuality(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 text-xs cursor-pointer"
-                >
-                  <option value="high">✨ Alta Nitidez Pro (CRF 17)</option>
-                  <option value="master">💎 Master Ultra (CRF 14)</option>
-                  <option value="balanced">⚖️ Equilibrado (CRF 21)</option>
-                </select>
-              </div>
-
-              {/* Resumen de Producción */}
-              <div className="p-2 rounded-xl bg-zinc-950/80 border border-zinc-800/80 flex flex-col gap-1 text-[11px] font-mono text-zinc-400 mt-2">
-                <div className="flex justify-between">
-                  <span>Clips en secuencia:</span>
-                  <span className="text-zinc-200">{timelineCuts.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Pistas de audio (A1):</span>
-                  <span className="text-indigo-300 font-bold">{audioCuts.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Duración neta:</span>
-                  <span className="text-purple-300 font-bold">{sequenceDuration.toFixed(1)}s</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Modo Bucle:</span>
-                  <span className={isLoopActive ? 'text-amber-300' : 'text-zinc-500'}>
-                    {isLoopActive ? 'Activado' : 'No'}
-                  </span>
-                </div>
+                <p className="text-[11px] text-zinc-500 max-w-[200px] leading-relaxed">
+                  {lang === 'es'
+                    ? 'Selecciona un clip en la línea de tiempo, un texto o una pista de audio para editar sus propiedades.'
+                    : 'Select a video clip, text overlay or audio track to customize its properties.'}
+                </p>
               </div>
             </div>
           )}
@@ -2746,7 +2699,7 @@ export default function VideoStudio({
                 const onCanPlay = () => {
                   if (videoPlayerRef.current) {
                     videoPlayerRef.current.currentTime = resolved.offsetInClip;
-                    if (isPlayingRef.current) videoPlayerRef.current.play().catch(() => {});
+                    if (isPlayingRef.current) videoPlayerRef.current.play().catch(() => { });
                   }
                   videoPlayerRef.current?.removeEventListener('canplay', onCanPlay);
                 };
@@ -2868,6 +2821,153 @@ export default function VideoStudio({
         onEnded={() => setAuditioningAudioPath(null)}
         className="hidden"
       />
+
+      {/* ── MODAL DE EXPORTACIÓN Y CONFIGURACIÓN DEL PROYECTO ── */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-[#121217] border border-purple-500/30 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-zinc-800 bg-[#16161f] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-base text-purple-400">⚙️</span>
+                <div>
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                    {lang === 'es' ? 'Configuración de Exportación' : 'Export Configuration'}
+                  </h3>
+                  <p className="text-[11px] text-zinc-400">
+                    {lang === 'es' ? 'Ajusta los parámetros finales antes de procesar el video' : 'Configure final parameters before rendering'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center text-xs transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 flex flex-col gap-4 text-xs">
+              {/* Carpeta Destino */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-zinc-300 font-bold flex items-center gap-1.5">
+                  <span>📁</span>
+                  <span>{lang === 'es' ? 'Carpeta Destino' : 'Destination Folder'}</span>
+                </label>
+                <div className="bg-zinc-950 border border-zinc-800 focus-within:border-purple-500 rounded-xl px-3 py-2 text-xs">
+                  <select
+                    value={targetFolder}
+                    onChange={(e) => setTargetFolder(e.target.value)}
+                    className="w-full bg-transparent text-purple-300 font-mono focus:outline-none cursor-pointer text-xs"
+                  >
+                    {availableFolders.map((f) => (
+                      <option key={f.path} value={f.path} className="bg-zinc-900 text-zinc-200">
+                        {f.name}
+                      </option>
+                    ))}
+                    {targetFolder && !availableFolders.some(f => f.path === targetFolder) && (
+                      <option value={targetFolder} className="bg-zinc-900 text-purple-300">
+                        {targetFolder.split(/[/\\]/).slice(-2).join('/')}
+                      </option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Nombre del Archivo */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-zinc-300 font-bold">
+                  {lang === 'es' ? 'Nombre del Archivo' : 'Filename'}
+                </label>
+                <input
+                  type="text"
+                  value={outputFilename}
+                  onChange={(e) => setOutputFilename(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 focus:border-purple-500 rounded-xl px-3 py-2 text-zinc-200 font-mono text-xs outline-none transition-colors"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] text-zinc-300 font-bold">
+                    {lang === 'es' ? 'Resolución de Exportación' : 'Resolution'}
+                  </label>
+                  <select
+                    value={resolution}
+                    onChange={(e) => setResolution(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-purple-500 rounded-xl px-3 py-2 text-zinc-200 text-xs cursor-pointer outline-none transition-colors"
+                  >
+                    <option value="1080p">📺 1080p Full HD</option>
+                    <option value="4k">💎 4K Ultra HD</option>
+                    <option value="720p">⚡ 720p Rápido</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] text-zinc-300 font-bold">
+                    {lang === 'es' ? 'Calidad CRF (H.264)' : 'CRF Quality'}
+                  </label>
+                  <select
+                    value={quality}
+                    onChange={(e) => setQuality(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-purple-500 rounded-xl px-3 py-2 text-zinc-200 text-xs cursor-pointer outline-none transition-colors"
+                  >
+                    <option value="high">✨ Alta Nitidez (CRF 17)</option>
+                    <option value="master">💎 Master Ultra (CRF 14)</option>
+                    <option value="balanced">⚖️ Equilibrado (CRF 21)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Resumen de Producción */}
+              <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800/80 flex flex-col gap-1.5 text-xs font-mono text-zinc-400">
+                <div className="flex justify-between">
+                  <span>Clips en secuencia:</span>
+                  <span className="text-zinc-200 font-bold">{timelineCuts.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Pistas de audio (A1):</span>
+                  <span className="text-indigo-300 font-bold">{audioCuts.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Duración neta:</span>
+                  <span className="text-purple-300 font-bold">{sequenceDuration.toFixed(1)}s</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Modo Bucle:</span>
+                  <span className={isLoopActive ? 'text-amber-300 font-bold' : 'text-zinc-500'}>
+                    {isLoopActive ? 'Activado' : 'No'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="px-5 py-3.5 border-t border-zinc-800 bg-[#16161f] flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold text-xs cursor-pointer transition-colors"
+              >
+                {lang === 'es' ? 'Cancelar' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExportModalOpen(false);
+                  handleExecuteRender(false);
+                }}
+                disabled={isRenderingPreview || isRenderingFull}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-950/50 cursor-pointer transition-all disabled:opacity-50"
+              >
+                🚀 {lang === 'es' ? 'Iniciar Exportación' : 'Start Export'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

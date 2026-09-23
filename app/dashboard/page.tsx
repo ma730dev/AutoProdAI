@@ -197,7 +197,7 @@ export default function Dashboard() {
       // 2. Si el registro en BD fue exitoso, crear las carpetas físicas en disco local
       await ControladorClient.initVideoWorkspace(basePath, channelName, "Estructura_Base", folders);
       toast.success(lang === 'es' ? 'Canal y carpetas creadas correctamente' : 'Channel and folders created successfully', { id: toastId });
-      
+
       await fetchDbChannels();
       if (workspacePath) loadWorkspaceTree(workspacePath);
     } catch (err: any) {
@@ -266,6 +266,9 @@ export default function Dashboard() {
   const [videoStudioTab, setVideoStudioTab] = useState<'clips' | 'audio' | 'text' | 'subtitles'>('clips');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(true);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
+  const [rightChatWidth, setRightChatWidth] = useState<number>(420);
 
   // ── Data State ──
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -411,7 +414,7 @@ export default function Dashboard() {
         const conv: Conversation = { ...raw, messages: formatMessages(raw.messages) };
         setConversations(prev => [conv, ...prev]);
         setActiveConversationId(conv.id);
-        setActiveView('chat');
+        setIsChatOpen(true);
         toast.success(lang === 'es' ? 'Nueva conversación creada' : 'New conversation created');
       }
     } catch { toast.error('Error al crear conversación'); }
@@ -425,8 +428,8 @@ export default function Dashboard() {
       if (res.ok) {
         setConversations(prev => prev.filter(c => c.id !== id));
         if (activeConversationId === id) {
-          setActiveConversationId(null);
-          setActiveView('home');
+          const remaining = conversations.filter(c => c.id !== id);
+          setActiveConversationId(remaining.length > 0 ? remaining[0].id : null);
         }
         toast.success(lang === 'es' ? 'Conversación eliminada' : 'Conversation deleted');
       } else {
@@ -467,12 +470,12 @@ export default function Dashboard() {
       return;
     }
 
-    const nameMap: Record<string, string> = { 
-      channel: 'crear_canal', 
-      video: 'crear_video', 
-      script: 'crear_guion', 
-      prompt: 'crear_prompt', 
-      import_channel: 'extraer_canal_youtube' 
+    const nameMap: Record<string, string> = {
+      channel: 'crear_canal',
+      video: 'crear_video',
+      script: 'crear_guion',
+      prompt: 'crear_prompt',
+      import_channel: 'extraer_canal_youtube'
     };
     const targetTemplateName = nameMap[roleType] || roleType;
     const template = promptTemplates.find(p => p.name === targetTemplateName);
@@ -500,7 +503,7 @@ export default function Dashboard() {
         const conv: Conversation = { ...raw, messages: formatMessages(raw.messages) };
         setConversations(prev => [conv, ...prev]);
         setActiveConversationId(conv.id);
-        setActiveView('chat');
+        setIsChatOpen(true);
         toast.success(lang === 'es' ? 'Chat de trabajo inicializado' : 'Workspace chat initialized');
       }
     } catch { toast.error('Error al iniciar el chat de trabajo'); }
@@ -508,9 +511,9 @@ export default function Dashboard() {
 
   // ── Chat ──
   const [isGeneratingGlobal, setIsGeneratingGlobal] = useState(false);
-  const [messageQueue, setMessageQueue] = useState<{text: string, conversationId: string, agentSlug?: string}[]>([]);
+  const [messageQueue, setMessageQueue] = useState<{ text: string, conversationId: string, agentSlug?: string }[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
-  
+
   // Estado para el Preview del Arnés
   const [actionPreview, setActionPreview] = useState<{
     endpoint: string;
@@ -544,7 +547,7 @@ export default function Dashboard() {
   const handleSendMessage = async (customText?: string, agentSlug?: string) => {
     const textToSend = customText ?? inputPrompt;
     const conversationId = activeConversationId;
-    
+
     if (!textToSend.trim() || !conversationId) return;
 
     if (!customText) {
@@ -561,12 +564,12 @@ export default function Dashboard() {
     setIsGeneratingGlobal(true);
     const text = textToSend;
     const tempMsg: Message = { sender: 'user', text, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), isTemp: true };
-    
+
     try {
       // 1. Obtener el modelo y deducir el proveedor seleccionado (Por defecto OpenAI GPT-4o Mini)
       let model = typeof window !== 'undefined' ? localStorage.getItem('autoprod_ai_model') || 'openai:gpt-4o-mini' : 'openai:gpt-4o-mini';
       if (model === 'default') model = 'openai:gpt-4o-mini';
-      
+
       let provider = 'openai';
       let actualModel = 'gpt-4o-mini';
       let friendlyModelName = 'GPT-4o Mini';
@@ -584,18 +587,18 @@ export default function Dashboard() {
       else if (provider === 'gemini') friendlyModelName = 'Gemini Flash';
       else if (provider === 'anthropic') friendlyModelName = 'Claude 3.5 Sonnet';
       else if (provider === 'imagen3') friendlyModelName = 'Imagen 3';
-      
+
       const startTime = Date.now();
-      const tempAiMsg: Message = { 
-        sender: 'gemini', 
-        text: isDeepThinking ? (lang === 'es' ? 'Razonando en profundidad...' : 'Deep reasoning...') : 'Pensando...', 
-        timestamp: '', 
-        modelName: friendlyModelName, 
-        isGenerating: true, 
+      const tempAiMsg: Message = {
+        sender: 'gemini',
+        text: isDeepThinking ? (lang === 'es' ? 'Razonando en profundidad...' : 'Deep reasoning...') : 'Pensando...',
+        timestamp: '',
+        modelName: friendlyModelName,
+        isGenerating: true,
         isTemp: true,
         isDeepThinking
       };
-      
+
       setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, messages: [...c.messages, tempMsg, tempAiMsg] } : c));
 
       // 2. Mapear a comando CLI o llamar a API REST Cloud
@@ -616,17 +619,17 @@ export default function Dashboard() {
           const allMessages = activeConversation?.messages || [];
           const firstUserIndex = allMessages.findIndex(m => m.sender === 'user');
           const messagesForApi = firstUserIndex >= 0 ? allMessages.slice(firstUserIndex) : allMessages;
-          
+
           const chatHistory = messagesForApi.map(m => ({
-             role: m.sender === 'user' ? 'user' : 'assistant',
-             content: m.text
+            role: m.sender === 'user' ? 'user' : 'assistant',
+            content: m.text
           }));
 
           const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              messages: [...chatHistory, { role: 'user', content: text }], 
+            body: JSON.stringify({
+              messages: [...chatHistory, { role: 'user', content: text }],
               provider,
               model: actualModel,
               workspacePath: workspacePath || '',
@@ -673,7 +676,7 @@ export default function Dashboard() {
             setCurrentCredits(data.newBalance);
             window.dispatchEvent(new CustomEvent('autoprod:wallet-updated', { detail: { balance: data.newBalance } }));
           }
-          
+
           if (reqPreview) {
             setActionPreview({
               content: aiResponseText,
@@ -695,14 +698,14 @@ export default function Dashboard() {
           setConversations(prev => prev.map(c => {
             if (c.id !== conversationId) return c;
             const newMsgs = [...c.messages];
-            newMsgs[newMsgs.length - 1] = { 
-              ...tempAiMsg, 
-              text: aiResponseText, 
+            newMsgs[newMsgs.length - 1] = {
+              ...tempAiMsg,
+              text: aiResponseText,
               modelName: data.modelName || friendlyModelName,
               isDeepThinking: data.isDeepThinking !== undefined ? data.isDeepThinking : isDeepThinking
             };
-            return { 
-              ...c, 
+            return {
+              ...c,
               messages: newMsgs,
               channelId: data.channelId || c.channelId
             };
@@ -713,7 +716,7 @@ export default function Dashboard() {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ channelId: data.channelId })
-            }).catch(() => {});
+            }).catch(() => { });
           }
         }
       } catch (e: any) {
@@ -731,13 +734,13 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, checklist, aiResponseText, modelName: actionPreview?.agent || friendlyModelName }),
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         const userMsg: Message = { sender: 'user', text: data.userMessage.text, timestamp: new Date(data.userMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-        const geminiMsg: Message = { 
-          sender: 'gemini', 
-          text: data.geminiMessage.text, 
+        const geminiMsg: Message = {
+          sender: 'gemini',
+          text: data.geminiMessage.text,
           timestamp: new Date(data.geminiMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           modelName: data.modelName || friendlyModelName,
           generationTimeMs,
@@ -748,7 +751,7 @@ export default function Dashboard() {
           // Filtramos los temporales usando isTemp y ponemos los reales
           return { ...c, title: data.conversationTitle, messages: [...c.messages.filter(m => !m.isTemp), userMsg, geminiMsg] };
         }));
-        
+
         // Simular SEO Update si era chat de texto
         if (provider !== 'imagen3') {
           setSeoOutput({
@@ -758,8 +761,8 @@ export default function Dashboard() {
           });
         }
       }
-    } catch { 
-      toast.error('Error al enviar mensaje'); 
+    } catch {
+      toast.error('Error al enviar mensaje');
       // Revertir mensajes temporales en caso de error fatal
       setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, messages: c.messages.filter(m => !m.isTemp) } : c));
     } finally {
@@ -785,7 +788,7 @@ export default function Dashboard() {
     if (!isGeneratingGlobal && messageQueue.length > 0) {
       const nextMsg = messageQueue[0];
       setMessageQueue(prev => prev.slice(1));
-      
+
       // Eliminar el mensaje en cola visualmente antes de enviarlo de verdad
       setConversations(prev => prev.map(c => {
         if (c.id === nextMsg.conversationId) {
@@ -793,7 +796,7 @@ export default function Dashboard() {
         }
         return c;
       }));
-      
+
       handleSendMessage(nextMsg.text, nextMsg.agentSlug);
     }
   }, [isGeneratingGlobal, messageQueue]);
@@ -836,7 +839,6 @@ export default function Dashboard() {
 
   // ── Layout resize ──
   const [leftWidth, setLeftWidth] = useState(256);
-  const [rightWidth, setRightWidth] = useState(320);
 
   const makeDragHandler = (
     current: number,
@@ -858,12 +860,12 @@ export default function Dashboard() {
 
   const handleExecutePreview = async () => {
     if (!actionPreview) return;
-    
+
     // Convertir el Súper Prompt a los parámetros requeridos por la ruta simplificada
     let channelName = "Nuevo_Canal";
     const nameMatch = actionPreview.content.match(/Canal[:\-]\s*(.+)/i);
     if (nameMatch && nameMatch[1]) channelName = nameMatch[1].trim().replace(/\s+/g, '_');
-    
+
     toast.loading("Ejecutando switch en la nube...", { id: 'exec-switch' });
     try {
       const res = await fetch(actionPreview.endpoint, {
@@ -894,9 +896,9 @@ export default function Dashboard() {
 
       {/* ── Header ── */}
       <header className="h-12 border-b border-zinc-800 bg-[#0f0f12] flex items-center justify-between px-4 shrink-0 gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => { setActiveView('home'); setActiveConversationId(null); }}
+            onClick={() => { setActiveView('home'); }}
             className="flex items-center gap-2.5 cursor-pointer focus:outline-none group"
           >
             <div className="h-7 w-7 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -904,17 +906,7 @@ export default function Dashboard() {
             </div>
             <span className="font-logo font-extrabold tracking-tight text-sm text-white">AutoProd Console</span>
           </button>
-
-          {/* Motor Status Badge */}
-          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[10px]">
-            <span className={`w-1.5 h-1.5 rounded-full ${motorStatus ? 'bg-emerald-400 animate-ping' : 'bg-zinc-600'}`} />
-            <span className={motorStatus ? 'text-emerald-400 font-semibold' : 'text-zinc-500'}>
-              {motorStatus ? (lang === 'es' ? 'Motor Conectado' : 'Engine Ready') : (lang === 'es' ? 'Modo Nube' : 'Cloud Mode')}
-            </span>
-          </div>
         </div>
-
-
 
         <div className="flex items-center gap-4">
           <button
@@ -928,10 +920,10 @@ export default function Dashboard() {
             <CreditCounter onClick={() => setIsPlansModalOpen(true)} planName={currentPlanName} />
             <span className="text-zinc-400 border-l border-zinc-700 pl-3">{userProfile?.email || 'demo@autoprod.io'}</span>
 
-            <ProfileDropdown 
-              userProfile={userProfile} 
-              lang={lang} 
-              onOpenSettings={() => setIsSettingsModalOpen(true)} 
+            <ProfileDropdown
+              userProfile={userProfile}
+              lang={lang}
+              onOpenSettings={() => setIsSettingsModalOpen(true)}
               onOpenPlans={() => setIsPlansModalOpen(true)}
             />
           </div>
@@ -939,61 +931,77 @@ export default function Dashboard() {
       </header>
 
       {/* ── 3-column workspace ── */}
-      <div className="flex-1 flex overflow-hidden w-full">
+      <div className="flex-1 flex overflow-hidden w-full relative">
+        {/* Botón lateral izquierdo para abrir panel */}
+        {!isLeftSidebarOpen && (
+          <button
+            onClick={() => setIsLeftSidebarOpen(true)}
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-40 bg-[#121217] hover:bg-zinc-800 border-r border-y border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white h-12 w-5 rounded-r-lg shadow-xl cursor-pointer transition-all flex items-center justify-center group"
+            title={lang === 'es' ? 'Abrir panel izquierdo' : 'Open left panel'}
+          >
+            <svg className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
 
         {/* Left sidebar */}
-        <aside style={{ width: `${leftWidth}px` }} className="bg-[#0f0f12] shrink-0 overflow-hidden">
-          <ConversationSidebar
-            lang={lang}
-            conversations={conversations}
-            activeConversationId={activeConversationId}
-            activeView={activeView}
-            workspacePath={workspacePath}
-            workspaceTree={workspaceTree}
-            motorStatus={motorStatus}
-            onRefreshWorkspace={() => workspacePath && loadWorkspaceTree(workspacePath)}
-            onNewConversation={handleNewConversation}
-            onSelectConversation={(id) => { setActiveConversationId(id); setActiveView('chat'); }}
-            onDeleteConversation={(id) => setDeleteTargetId(id)}
-            onRenameConversation={handleRenameConversation}
-            onLinkWorkspace={() => {
-              setModalParentPath(null);
-              setCreationMode(null);
-              setIsWorkspaceModalOpen(true);
-            }}
-            onAddNode={(parentPath, type) => {
-              const maxChannels = userProfile?.maxChannels ?? 1;
-              if (type === 'channel' && userProfile?.role !== 'ADMIN' && workspaceTree.length >= maxChannels) {
-                toast.error(lang === 'es'
-                  ? `Límite alcanzado. Tu plan permite un máximo de ${maxChannels} canal(es).`
-                  : `Limit reached. Your plan allows a maximum of ${maxChannels} channel(s).`);
-                return;
-              }
-              setModalParentPath(parentPath);
-              setCreationMode(type);
-              setIsWorkspaceModalOpen(true);
-            }}
-            onOpenFile={(path) => {
-              setActiveEditorPath(path);
-              // Do NOT change activeView, just set the path to open the right panel
-            }}
-            onOpenLooper={() => setActiveView('looper')}
-            onOpenSubtitles={() => setActiveView('subtitles')}
-            onOpenAssets={() => setActiveView('assets')}
-            onOpenImages={() => setActiveView('images')}
-            onOpenTTS={() => setActiveView('tts')}
-          />
-        </aside>
+        {isLeftSidebarOpen && (
+          <>
+            <aside style={{ width: `${leftWidth}px` }} className="bg-[#0f0f12] shrink-0 overflow-hidden">
+              <ConversationSidebar
+                lang={lang}
+                conversations={conversations}
+                activeConversationId={activeConversationId}
+                activeView={activeView}
+                workspacePath={workspacePath}
+                workspaceTree={workspaceTree}
+                motorStatus={motorStatus}
+                onRefreshWorkspace={() => workspacePath && loadWorkspaceTree(workspacePath)}
+                onNewConversation={handleNewConversation}
+                onSelectConversation={(id) => { setActiveConversationId(id); setIsChatOpen(true); }}
+                onDeleteConversation={(id) => setDeleteTargetId(id)}
+                onRenameConversation={handleRenameConversation}
+                onLinkWorkspace={() => {
+                  setModalParentPath(null);
+                  setCreationMode(null);
+                  setIsWorkspaceModalOpen(true);
+                }}
+                onAddNode={(parentPath, type) => {
+                  const maxChannels = userProfile?.maxChannels ?? 1;
+                  if (type === 'channel' && userProfile?.role !== 'ADMIN' && workspaceTree.length >= maxChannels) {
+                    toast.error(lang === 'es'
+                      ? `Límite alcanzado. Tu plan permite un máximo de ${maxChannels} canal(es).`
+                      : `Limit reached. Your plan allows a maximum of ${maxChannels} channel(s).`);
+                    return;
+                  }
+                  setModalParentPath(parentPath);
+                  setCreationMode(type);
+                  setIsWorkspaceModalOpen(true);
+                }}
+                onOpenFile={(path) => {
+                  setActiveEditorPath(path);
+                }}
+                onOpenLooper={() => setActiveView('looper')}
+                onOpenSubtitles={() => setActiveView('subtitles')}
+                onOpenAssets={() => setActiveView('assets')}
+                onOpenImages={() => setActiveView('images')}
+                onOpenTTS={() => setActiveView('tts')}
+                onToggleCollapse={() => setIsLeftSidebarOpen(false)}
+              />
+            </aside>
 
-        {/* Resize handle left */}
-        <div
-          onMouseDown={makeDragHandler(leftWidth, setLeftWidth, 180, 450)}
-          className="w-[3px] hover:w-[5px] hover:bg-purple-500/40 active:bg-purple-500 cursor-col-resize h-full transition-all shrink-0 bg-zinc-800/40 relative z-30"
-        />
+            {/* Resize handle left */}
+            <div
+              onMouseDown={makeDragHandler(leftWidth, setLeftWidth, 180, 450)}
+              className="w-[3px] hover:w-[5px] hover:bg-purple-500/40 active:bg-purple-500 cursor-col-resize h-full transition-all shrink-0 bg-zinc-800/40 relative z-30"
+            />
+          </>
+        )}
 
-        {/* Center — Launchpad, Looper, Subtitles, Assets, Images or Chat */}
-        <main className="flex-1 flex flex-col bg-[#121214] overflow-hidden relative">
-          {activeView === 'home' ? (
+        {/* Center — Launchpad, Looper, Subtitles, Assets, Images or TTS */}
+        <main className="flex-1 flex flex-col bg-[#121214] overflow-hidden relative min-w-0">
+          {(activeView === 'home' || activeView === 'chat') ? (
             <Launchpad
               lang={lang}
               onSelect={handleNewConversationWithRole}
@@ -1060,32 +1068,7 @@ export default function Dashboard() {
               onBackToDashboard={() => setActiveView('home')}
               onOpenSubtitlesStudio={() => setActiveView('subtitles')}
             />
-          ) : (
-            <ChatPanel
-              lang={lang}
-              messages={messages}
-              activeConversation={activeConversation}
-              channels={channels}
-              activeConversationId={activeConversationId}
-              inputPrompt={inputPrompt}
-              checklist={checklist}
-              onInputChange={setInputPrompt}
-              onSend={handleSendMessage}
-              onChecklistChange={(key, val) => setChecklist(prev => ({ ...prev, [key]: val }))}
-              onAssociateChannel={handleAssociateChannel}
-              isGenerating={isGeneratingGlobal}
-              onCancel={cancelGeneration}
-              workspacePath={workspacePath}
-              onSuccess={() => {
-                if (workspacePath) {
-                  loadWorkspaceTree(workspacePath);
-                }
-              }}
-              isDeepThinking={isDeepThinking}
-              onToggleDeepThinking={setIsDeepThinking}
-              promptTemplates={promptTemplates}
-            />
-          )}
+          ) : null}
 
           {/* Action Preview Floating Panel */}
           {actionPreview && (
@@ -1099,16 +1082,16 @@ export default function Dashboard() {
                   ✕
                 </button>
               </div>
-              
+
               <div className="p-4 bg-black/40">
                 <p className="text-xs text-zinc-400 mb-2 font-semibold tracking-wide uppercase">Previsualización de Estructura:</p>
                 <div className="bg-[#0f0f12] border border-zinc-800 p-3 rounded-lg text-xs font-mono text-zinc-300 h-48 overflow-y-auto whitespace-pre-wrap">
                   {actionPreview.content}
                 </div>
               </div>
-              
+
               <div className="p-4 border-t border-zinc-800 bg-[#18181b] flex flex-col gap-2">
-                <button 
+                <button
                   onClick={handleExecutePreview}
                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-lg shadow-lg flex justify-center items-center gap-2 transition-all"
                 >
@@ -1122,22 +1105,100 @@ export default function Dashboard() {
           )}
         </main>
 
-        {/* Resize handle right + Previewer — only when activeEditorPath is set */}
-        {activeEditorPath && (
+        {/* Right Panel: Copilot Agéntico / File Previewer */}
+        {(isChatOpen || activeEditorPath) && (
           <>
+            {/* Resize handle right */}
             <div
-              onMouseDown={makeDragHandler(rightWidth, setRightWidth, 300, 800, true)}
+              onMouseDown={makeDragHandler(rightChatWidth, setRightChatWidth, 320, 700, true)}
               className="w-[3px] hover:w-[5px] hover:bg-purple-500/40 active:bg-purple-500 cursor-col-resize h-full transition-all shrink-0 bg-zinc-800/40 relative z-30"
             />
-            <aside style={{ width: `${rightWidth}px` }} className="bg-[#0f0f12] shrink-0 overflow-hidden flex flex-col">
-              <FilePreviewer 
-                filePath={activeEditorPath} 
-                onClose={() => setActiveEditorPath(null)} 
-              />
+            <aside style={{ width: `${rightChatWidth}px` }} className="bg-[#0f0f12] shrink-0 overflow-hidden flex flex-col relative z-20">
+              {activeEditorPath ? (
+                <div className="flex flex-col h-full">
+                  <div className="h-10 border-b border-zinc-800 bg-[#0c0c0e] px-3 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="text-xs font-semibold text-zinc-300 truncate">
+                        📄 {activeEditorPath.split(/[/\\]/).pop()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setActiveEditorPath(null)}
+                        className="text-xs px-2 py-1 rounded bg-purple-950/70 hover:bg-purple-900 border border-purple-500/40 text-purple-200 transition-colors cursor-pointer"
+                        title={lang === 'es' ? 'Volver al Copilot IA' : 'Back to AI Copilot'}
+                      >
+                        ✨ {lang === 'es' ? 'Ver Copilot' : 'View Copilot'}
+                      </button>
+                      <button
+                        onClick={() => setActiveEditorPath(null)}
+                        className="w-6 h-6 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center text-xs transition-colors cursor-pointer"
+                        title={lang === 'es' ? 'Cerrar archivo' : 'Close file'}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <FilePreviewer
+                      filePath={activeEditorPath}
+                      onClose={() => setActiveEditorPath(null)}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <ChatPanel
+                  lang={lang}
+                  messages={messages}
+                  activeConversation={activeConversation}
+                  channels={channels}
+                  activeConversationId={activeConversationId}
+                  inputPrompt={inputPrompt}
+                  checklist={checklist}
+                  onInputChange={setInputPrompt}
+                  onSend={handleSendMessage}
+                  onChecklistChange={(key, val) => setChecklist(prev => ({ ...prev, [key]: val }))}
+                  onAssociateChannel={handleAssociateChannel}
+                  isGenerating={isGeneratingGlobal}
+                  onCancel={cancelGeneration}
+                  workspacePath={workspacePath}
+                  onSuccess={() => {
+                    if (workspacePath) {
+                      loadWorkspaceTree(workspacePath);
+                    }
+                  }}
+                  isDeepThinking={isDeepThinking}
+                  onToggleDeepThinking={setIsDeepThinking}
+                  promptTemplates={promptTemplates}
+                  conversations={conversations}
+                  onSelectConversation={(id) => setActiveConversationId(id)}
+                  onNewConversation={handleNewConversation}
+                  onDeleteConversation={(id) => setDeleteTargetId(id)}
+                  onRenameConversation={handleRenameConversation}
+                  onToggleCollapse={() => setIsChatOpen(false)}
+                />
+              )}
             </aside>
           </>
         )}
+
       </div>
+
+      {/* Burbuja inferior derecha para abrir el chat */}
+      {!isChatOpen && (
+        <button
+          onClick={() => setIsChatOpen(true)}
+          className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold px-4 py-2.5 rounded-full shadow-2xl shadow-purple-900/50 flex items-center gap-2 text-xs transition-all hover:scale-105 active:scale-95 cursor-pointer border border-purple-400/40"
+        >
+          <span className="text-base">✨</span>
+          <span>{lang === 'es' ? 'Copilot IA' : 'AI Copilot'}</span>
+          <span className="flex h-2 w-2 relative">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+          </span>
+        </button>
+      )}
+
 
       {/* Credit Confirmation Modal */}
       {isCreditModalOpen && (
@@ -1150,15 +1211,15 @@ export default function Dashboard() {
               {lang === 'es' ? 'Consumo de Créditos AutoProd' : 'AutoProd Credits Usage'}
             </h2>
             <p className="text-sm text-zinc-400 mb-6 leading-relaxed">
-              {lang === 'es' 
-                ? 'No tienes una API Key personal configurada (BYOK). Esta acción consumirá créditos de la plataforma AutoProd. ¿Deseas continuar?' 
+              {lang === 'es'
+                ? 'No tienes una API Key personal configurada (BYOK). Esta acción consumirá créditos de la plataforma AutoProd. ¿Deseas continuar?'
                 : "You don't have a personal API Key (BYOK) configured. This action will consume AutoProd platform credits. Do you want to continue?"}
             </p>
-            
+
             <label className="flex items-center gap-2 mb-6 text-sm text-zinc-300 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={dontAskCreditAgain} 
+              <input
+                type="checkbox"
+                checked={dontAskCreditAgain}
                 onChange={(e) => setDontAskCreditAgain(e.target.checked)}
                 className="w-4 h-4 rounded border-zinc-700 bg-black text-purple-500 focus:ring-purple-500 focus:ring-offset-black"
               />
@@ -1166,7 +1227,7 @@ export default function Dashboard() {
             </label>
 
             <div className="flex w-full gap-3">
-              <button 
+              <button
                 onClick={() => {
                   setIsCreditModalOpen(false);
                   setPendingChatMessage(null);
@@ -1175,7 +1236,7 @@ export default function Dashboard() {
               >
                 {lang === 'es' ? 'Cancelar' : 'Cancel'}
               </button>
-              <button 
+              <button
                 onClick={handleConfirmCreditUsage}
                 className="flex-1 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors shadow-lg shadow-purple-500/20"
               >

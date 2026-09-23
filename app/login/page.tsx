@@ -27,6 +27,13 @@ export default function LoginPage() {
           description: 'Tu correo ha sido verificado. Ya puedes iniciar sesión en tu cuenta.',
         });
       }
+      const urlError = params.get('error');
+      if (urlError) {
+        setError(urlError);
+        toast.error('Error de autenticación', {
+          description: urlError,
+        });
+      }
     }
   }, []);
 

@@ -267,17 +267,21 @@ export default function AssetLibraryView({
   };
 
   // Load preview subtitle if applicable
+  // Helper to get real streaming URL (works with local PC files and cloud URLs)
+  const getAssetStreamUrl = (asset?: AssetRecord | null) => {
+    if (!asset) return '';
+    if (asset.storageUrl) return asset.storageUrl;
+    if (asset.localPath) return `/api/assets/stream?path=${encodeURIComponent(asset.localPath)}`;
+    return '';
+  };
+
+  // Load preview subtitle if applicable
   useEffect(() => {
     if (previewAsset && previewAsset.type === 'SUBTITLE') {
-      if (previewAsset.localPath && motorStatus) {
+      const streamUrl = getAssetStreamUrl(previewAsset);
+      if (streamUrl) {
         setLoadingSubtitle(true);
-        ControladorClient.previewSubtitleFile(previewAsset.localPath)
-          .then(res => setSubtitleText(res.content))
-          .catch(() => setSubtitleText(null))
-          .finally(() => setLoadingSubtitle(false));
-      } else if (previewAsset.storageUrl) {
-        setLoadingSubtitle(true);
-        fetch(previewAsset.storageUrl)
+        fetch(streamUrl)
           .then(res => res.text())
           .then(t => setSubtitleText(t))
           .catch(() => setSubtitleText(null))
@@ -288,7 +292,7 @@ export default function AssetLibraryView({
     } else {
       setSubtitleText(null);
     }
-  }, [previewAsset, motorStatus]);
+  }, [previewAsset]);
 
   // Helpers
   const formatBytes = (bytes: number) => {
@@ -587,7 +591,7 @@ export default function AssetLibraryView({
                   {/* Thumbnail / Image Preview */}
                   {(asset.type === 'IMAGE' || asset.type === 'THUMBNAIL') && (asset.storageUrl || asset.localPath) ? (
                     <img
-                      src={asset.storageUrl || `http://127.0.0.1:8000/workspace/file?path=${encodeURIComponent(asset.localPath || '')}`}
+                      src={getAssetStreamUrl(asset)}
                       alt={asset.name}
                       onError={e => {
                         // Fallback icon on image error
@@ -595,12 +599,36 @@ export default function AssetLibraryView({
                       }}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
-                  ) : asset.type === 'VIDEO' ? (
-                    <div className="flex flex-col items-center justify-center gap-2 text-zinc-400">
-                      <span className="text-4xl group-hover:scale-110 transition-transform">🎬</span>
-                      <span className="text-[10px] font-mono uppercase bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+                  ) : asset.type === 'VIDEO' && (asset.storageUrl || asset.localPath) ? (
+                    <div className="relative w-full h-full bg-black flex items-center justify-center group/video overflow-hidden">
+                      <video
+                        src={`${getAssetStreamUrl(asset)}#t=0.5`}
+                        preload="metadata"
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/30 group-hover:bg-transparent transition-colors flex items-center justify-center">
+                        <div className="w-9 h-9 rounded-full bg-black/60 border border-white/20 text-white flex items-center justify-center text-xs backdrop-blur-sm shadow-lg group-hover/video:scale-110 group-hover/video:bg-purple-600 transition-all">
+                          ▶
+                        </div>
+                      </div>
+                    </div>
+                  ) : asset.type === 'AUDIO' && (asset.storageUrl || asset.localPath) ? (
+                    <div className="relative w-full h-full bg-gradient-to-br from-indigo-950/40 to-purple-950/20 flex flex-col items-center justify-center p-3 gap-1.5">
+                      <div className="w-9 h-9 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 flex items-center justify-center text-base shadow-inner">
+                        🎵
+                      </div>
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase bg-zinc-900/80 px-2 py-0.5 rounded border border-zinc-800">
                         {asset.format}
                       </span>
+                      <audio
+                        src={getAssetStreamUrl(asset)}
+                        preload="none"
+                        controls
+                        onClick={e => e.stopPropagation()}
+                        className="w-full h-7 opacity-80 hover:opacity-100 transition-opacity mt-0.5 scale-90"
+                      />
                     </div>
                   ) : asset.type === 'SUBTITLE' ? (
                     <div className="p-3 w-full h-full flex flex-col justify-between text-zinc-400 font-mono text-[10px] bg-zinc-900/50">
@@ -868,7 +896,7 @@ export default function AssetLibraryView({
                 <div className="space-y-4 w-full flex flex-col items-center">
                   <div className="max-h-[60vh] max-w-full rounded-xl overflow-hidden border border-zinc-800 shadow-2xl bg-black flex items-center justify-center">
                     <img
-                      src={previewAsset.storageUrl || `http://127.0.0.1:8000/workspace/file?path=${encodeURIComponent(previewAsset.localPath || '')}`}
+                      src={getAssetStreamUrl(previewAsset)}
                       alt={previewAsset.name}
                       className="max-h-[55vh] max-w-full object-contain"
                     />
@@ -911,10 +939,26 @@ export default function AssetLibraryView({
               ) : previewAsset.type === 'VIDEO' ? (
                 <div className="w-full flex flex-col items-center gap-3">
                   <video
-                    src={previewAsset.storageUrl || `http://127.0.0.1:8000/workspace/file?path=${encodeURIComponent(previewAsset.localPath || '')}`}
+                    src={getAssetStreamUrl(previewAsset)}
                     controls
-                    className="w-full max-h-[60vh] rounded-xl border border-zinc-800 bg-black"
+                    autoPlay
+                    playsInline
+                    className="w-full max-h-[60vh] rounded-xl border border-zinc-800 bg-black shadow-2xl"
                   />
+                </div>
+              ) : previewAsset.type === 'AUDIO' ? (
+                <div className="w-full flex flex-col items-center justify-center py-10 gap-6">
+                  <div className="w-24 h-24 rounded-3xl bg-indigo-950/60 border border-indigo-500/40 flex items-center justify-center text-5xl shadow-2xl shadow-indigo-950/50">
+                    🎵
+                  </div>
+                  <div className="w-full max-w-md">
+                    <audio
+                      src={getAssetStreamUrl(previewAsset)}
+                      controls
+                      autoPlay
+                      className="w-full"
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="text-center text-zinc-400 py-12">

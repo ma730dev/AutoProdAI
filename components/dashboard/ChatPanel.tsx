@@ -33,6 +33,12 @@ interface Props {
   isDeepThinking?: boolean;
   onToggleDeepThinking?: (val: boolean) => void;
   promptTemplates?: any[];
+  conversations?: Conversation[];
+  onSelectConversation?: (id: string) => void;
+  onNewConversation?: () => void;
+  onDeleteConversation?: (id: string) => void;
+  onRenameConversation?: (id: string, newTitle: string) => void;
+  onToggleCollapse?: () => void;
 }
 
 export default function ChatPanel({
@@ -54,6 +60,12 @@ export default function ChatPanel({
   isDeepThinking = false,
   onToggleDeepThinking,
   promptTemplates = [],
+  conversations = [],
+  onSelectConversation,
+  onNewConversation,
+  onDeleteConversation,
+  onRenameConversation,
+  onToggleCollapse,
 }: Props) {
   const t = translations[lang];
 
@@ -63,6 +75,12 @@ export default function ChatPanel({
   const [hasNewMessage, setHasNewMessage] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [timerStart, setTimerStart] = useState<number | null>(null);
+
+  // ── Historial de conversaciones en el Copilot ──
+  const [showHistoryView, setShowHistoryView] = useState(false);
+  const [searchConv, setSearchConv] = useState('');
+  const [editingConvId, setEditingConvId] = useState<string | null>(null);
+  const [editConvTitle, setEditConvTitle] = useState('');
 
   const PROMPT_TEMPLATES: Record<string, string> = {
     import_channel: `[Extracción y Análisis de Canal de YouTube]
@@ -202,15 +220,354 @@ export default function ChatPanel({
     }
   };
 
+  if (showHistoryView) {
+    const filteredConversations = conversations.filter(c =>
+      c.title.toLowerCase().includes(searchConv.toLowerCase())
+    );
+
+    return (
+      <div className="flex-1 flex flex-col relative h-full bg-[#0d0d10] animate-in fade-in duration-150">
+        {/* Header de la vista de historial */}
+        <div className="h-12 border-b border-zinc-800 bg-[#0f0f12] px-3.5 flex items-center justify-between shrink-0 gap-2 relative z-30">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setShowHistoryView(false)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white text-xs font-semibold transition-all cursor-pointer shrink-0"
+              title={lang === 'es' ? 'Volver al chat' : 'Back to chat'}
+            >
+              <span className="text-sm">←</span>
+              <span>{lang === 'es' ? 'Volver' : 'Back'}</span>
+            </button>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <svg className="w-4 h-4 text-purple-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-xs font-bold text-white truncate">
+                {lang === 'es' ? 'Historial de Conversaciones' : 'Conversation History'}
+              </span>
+              <span className="text-[10px] font-mono text-zinc-400 bg-zinc-800 px-1.5 py-0.2 rounded-full border border-zinc-700 shrink-0">
+                {conversations.length}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onNewConversation && (
+              <button
+                type="button"
+                onClick={() => {
+                  onNewConversation();
+                  setShowHistoryView(false);
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-95 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 shadow-sm shadow-purple-500/20 active:scale-95"
+                title={lang === 'es' ? 'Iniciar nueva conversación' : 'Start new conversation'}
+              >
+                <span>+</span>
+                <span className="hidden sm:inline">{lang === 'es' ? 'Nueva' : 'New'}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowHistoryView(false)}
+              className="w-7 h-7 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center text-xs transition-colors cursor-pointer shrink-0"
+              title={lang === 'es' ? 'Volver al chat' : 'Back to chat'}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Buscador de conversaciones */}
+        <div className="p-3 border-b border-zinc-800 bg-[#0c0c0f]">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder={lang === 'es' ? 'Buscar en conversaciones...' : 'Search conversations...'}
+              value={searchConv}
+              onChange={(e) => setSearchConv(e.target.value)}
+              className="w-full bg-zinc-900/90 border border-zinc-800 rounded-lg pl-8 pr-7 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-purple-500 transition-colors"
+            />
+            <svg className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0118 0z" />
+            </svg>
+            {searchConv && (
+              <button
+                type="button"
+                onClick={() => setSearchConv('')}
+                className="absolute right-2 top-2 text-zinc-500 hover:text-zinc-300 text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Lista scrolleable de conversaciones */}
+        <div className="flex-1 overflow-y-auto minimal-scrollbar p-3 space-y-2">
+          {filteredConversations.map((conv) => {
+            const isActive = conv.id === activeConversationId;
+            const isEditing = editingConvId === conv.id;
+            const messageCount = conv.messages?.length || 0;
+            const formattedDate = conv.createdAt
+              ? new Date(conv.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+              : '';
+
+            return (
+              <div
+                key={conv.id}
+                onClick={() => {
+                  if (onSelectConversation && !isEditing) {
+                    onSelectConversation(conv.id);
+                    setShowHistoryView(false);
+                  }
+                }}
+                className={`group flex items-start justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-purple-950/40 border-purple-500/50 text-purple-200 shadow-sm shadow-purple-500/10'
+                    : 'bg-zinc-900/50 hover:bg-zinc-800/70 border-zinc-800/80 hover:border-zinc-700 text-zinc-300'
+                }`}
+              >
+                <div className="flex-1 min-w-0 pr-2">
+                  {isEditing ? (
+                    <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={editConvTitle}
+                        onChange={(e) => setEditConvTitle(e.target.value)}
+                        onBlur={() => {
+                          if (onRenameConversation && editConvTitle.trim()) {
+                            onRenameConversation(conv.id, editConvTitle.trim());
+                          }
+                          setEditingConvId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            if (onRenameConversation && editConvTitle.trim()) {
+                              onRenameConversation(conv.id, editConvTitle.trim());
+                            }
+                            setEditingConvId(null);
+                          } else if (e.key === 'Escape') {
+                            setEditingConvId(null);
+                          }
+                        }}
+                        autoFocus
+                        className="flex-1 bg-zinc-950 border border-purple-500 text-xs px-2 py-1 rounded-lg text-white outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onRenameConversation && editConvTitle.trim()) {
+                            onRenameConversation(conv.id, editConvTitle.trim());
+                          }
+                          setEditingConvId(null);
+                        }}
+                        className="px-2 py-1 bg-purple-600 text-white text-[11px] rounded-lg font-bold"
+                      >
+                        ✓
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs shrink-0">💬</span>
+                        <span className="text-xs font-semibold truncate text-zinc-100 group-hover:text-purple-200 transition-colors">
+                          {conv.title}
+                        </span>
+                        {isActive && (
+                          <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.2 rounded font-mono shrink-0">
+                            {lang === 'es' ? 'Activo' : 'Active'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5 text-[10px] text-zinc-500">
+                        {formattedDate && <span>{formattedDate}</span>}
+                        {formattedDate && <span>•</span>}
+                        <span>
+                          {messageCount} {lang === 'es' ? (messageCount === 1 ? 'mensaje' : 'mensajes') : (messageCount === 1 ? 'msg' : 'msgs')}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Acciones */}
+                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity pt-0.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingConvId(conv.id);
+                      setEditConvTitle(conv.title);
+                    }}
+                    className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white text-xs transition-colors"
+                    title={lang === 'es' ? 'Renombrar' : 'Rename'}
+                  >
+                    ✏️
+                  </button>
+                  {onDeleteConversation && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteConversation(conv.id);
+                      }}
+                      className="p-1.5 hover:bg-red-950/60 rounded-lg text-zinc-400 hover:text-red-400 text-xs transition-colors"
+                      title={lang === 'es' ? 'Eliminar' : 'Delete'}
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {filteredConversations.length === 0 && (
+            <div className="py-16 flex flex-col items-center justify-center text-center">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-3 text-zinc-500">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </div>
+              <p className="text-xs font-semibold text-zinc-300 mb-1">
+                {searchConv
+                  ? (lang === 'es' ? 'No se encontraron conversaciones' : 'No conversations found')
+                  : (lang === 'es' ? 'No hay conversaciones previas' : 'No previous conversations')}
+              </p>
+              <p className="text-[11px] text-zinc-500 max-w-[200px]">
+                {searchConv
+                  ? (lang === 'es' ? 'Prueba con otro término de búsqueda.' : 'Try a different search term.')
+                  : (lang === 'es' ? 'Tus chats anteriores aparecerán aquí para fácil acceso.' : 'Your previous chats will appear here for easy access.')}
+              </p>
+              {onNewConversation && !searchConv && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNewConversation();
+                    setShowHistoryView(false);
+                  }}
+                  className="mt-4 px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-md shadow-purple-600/20"
+                >
+                  {lang === 'es' ? '+ Iniciar conversación' : '+ Start conversation'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex-1 flex flex-col relative h-full">
+    <div className="flex-1 flex flex-col relative h-full bg-[#0d0d10]">
+      {/* ── Copilot Header Bar ── */}
+      <div className="h-12 border-b border-zinc-800 bg-[#0f0f12] px-3.5 flex items-center justify-between shrink-0 gap-2 relative z-30">
+        {/* Título de la conversación activa */}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="text-sm shrink-0">💬</span>
+          <span className="text-xs font-semibold text-zinc-200 truncate" title={activeConversation?.title || (lang === 'es' ? 'Nueva conversación' : 'New conversation')}>
+            {activeConversation?.title || (lang === 'es' ? 'Nueva conversación' : 'New conversation')}
+          </span>
+        </div>
+
+        {/* Acciones: Reloj (Historial), Nueva y Cerrar */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Botón Reloj para cambiar a la vista de historial de conversaciones */}
+          <button
+            type="button"
+            onClick={() => setShowHistoryView(true)}
+            className="w-8 h-8 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-purple-500/50 text-zinc-400 hover:text-purple-300 flex items-center justify-center transition-all cursor-pointer shadow-sm group"
+            title={lang === 'es' ? 'Historial de conversaciones' : 'Conversation history'}
+          >
+            <svg className="w-4 h-4 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+
+          {/* Botón + Nueva */}
+          {onNewConversation && (
+            <button
+              type="button"
+              onClick={onNewConversation}
+              className="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-95 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 shadow-sm shadow-purple-500/20 active:scale-95"
+              title={lang === 'es' ? 'Iniciar nueva conversación' : 'Start new conversation'}
+            >
+              <span>+</span>
+              <span className="hidden sm:inline">{lang === 'es' ? 'Nueva' : 'New'}</span>
+            </button>
+          )}
+
+          {/* Botón Colapsar Copilot */}
+          {onToggleCollapse && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="w-7 h-7 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center text-xs transition-colors cursor-pointer shrink-0"
+              title={lang === 'es' ? 'Ocultar panel del agente' : 'Collapse agent panel'}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Messages log */}
       <div
-        className="flex-1 overflow-y-auto minimal-scrollbar p-6 space-y-4"
+        className="flex-1 overflow-y-auto minimal-scrollbar p-4 space-y-4"
         ref={chatContainerRef}
         onScroll={handleScroll}
       >
-        {messages.map((msg, index) => (
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center p-4 my-auto h-full select-none">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-500/20 to-indigo-500/20 border border-purple-500/30 flex items-center justify-center mb-2.5 shadow-lg shadow-purple-500/10">
+              <span className="text-xl">✨</span>
+            </div>
+            <h3 className="text-xs font-bold text-white mb-1">
+              {lang === 'es' ? 'Copilot Agéntico de AutoProd' : 'AutoProd Agentic Copilot'}
+            </h3>
+            <p className="text-[11px] text-zinc-400 max-w-[260px] leading-relaxed mb-4">
+              {lang === 'es'
+                ? 'Tu cerebro central para organizar canales, redactar guiones, analizar métricas y coordinar tools sin salir de tu pantalla activa.'
+                : 'Your central brain to organize channels, write scripts, inspect metrics and run tools seamlessly.'}
+            </p>
+
+            <div className="flex flex-col gap-1.5 w-full max-w-[260px]">
+              <button
+                type="button"
+                onClick={() => handleInsertTemplate('channel')}
+                className="w-full text-left p-2 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800 hover:border-purple-500/50 text-[11px] text-zinc-300 transition-all flex items-center gap-2 group cursor-pointer"
+              >
+                <span className="text-sm">🏗️</span>
+                <span className="font-medium group-hover:text-purple-300 transition-colors">
+                  {lang === 'es' ? 'Crear y configurar canal' : 'Create & setup channel'}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleInsertTemplate('video')}
+                className="w-full text-left p-2 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800 hover:border-blue-500/50 text-[11px] text-zinc-300 transition-all flex items-center gap-2 group cursor-pointer"
+              >
+                <span className="text-sm">🎬</span>
+                <span className="font-medium group-hover:text-blue-300 transition-colors">
+                  {lang === 'es' ? 'Planificar nuevo video' : 'Plan a new video'}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleInsertTemplate('script')}
+                className="w-full text-left p-2 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800 hover:border-indigo-500/50 text-[11px] text-zinc-300 transition-all flex items-center gap-2 group cursor-pointer"
+              >
+                <span className="text-sm">✍️</span>
+                <span className="font-medium group-hover:text-indigo-300 transition-colors">
+                  {lang === 'es' ? 'Redactar guion con ganchos' : 'Write script with hooks'}
+                </span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          messages.map((msg, index) => (
           <div
             key={index}
             className={`flex gap-3 max-w-3xl ${msg.sender === 'user' ? 'ml-auto flex-row-reverse' : ''}`}
@@ -259,7 +616,8 @@ export default function ChatPanel({
               </div>
             </div>
           </div>
-        ))}
+        ))
+      )}
       </div>
 
       {/* Scroll to bottom button */}
@@ -275,126 +633,13 @@ export default function ChatPanel({
       )}
 
       {/* Bottom input panel */}
-      <div className="p-4 border-t border-zinc-800 bg-[#0f0f12] flex flex-col gap-3">
-        {/* Toolbar: Channel Selector, Templates, and Deep Thinking */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Active Channel Selector Dropdown */}
-            <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-700/80 rounded-lg px-2 py-1 shadow-sm">
-              <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1 select-none">
-                📺 <span className="hidden sm:inline">{lang === 'es' ? 'Canal:' : 'Channel:'}</span>
-              </span>
-              <select
-                value={activeChannelObj ? activeChannelObj.id : (activeConversation?.channelId || '')}
-                onChange={(e) => onAssociateChannel(e.target.value || null)}
-                className="bg-zinc-800 border border-zinc-700 text-xs font-medium text-zinc-200 rounded px-2 py-0.5 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 cursor-pointer max-w-[170px] sm:max-w-[210px] truncate"
-              >
-                <option value="">{lang === 'es' ? '🌐 Sin canal (General)' : '🌐 No Channel (General)'}</option>
-                {channels.map(ch => (
-                  <option key={ch.id} value={ch.id}>
-                    {ch.name} {ch.niche ? `• ${ch.niche}` : ''}
-                  </option>
-                ))}
-              </select>
-
-              {activeChannelObj && (
-                <span 
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-950/80 border border-purple-700/60 text-purple-300 text-[11px] font-medium"
-                  title={activeChannelObj.localPath ? `Ruta: ${activeChannelObj.localPath}` : (activeChannelObj.niche || activeChannelObj.name)}
-                >
-                  🎯 <span className="max-w-[100px] truncate">{activeChannelObj.niche || activeChannelObj.name}</span>
-                  <span className="text-emerald-400 font-bold" title={lang === 'es' ? 'Guardrail Activo: IA restringida a este nicho' : 'Active Guardrail: AI restricted to this niche'}>🛡️</span>
-                </span>
-              )}
-            </div>
-
-            <div className="h-4 w-px bg-zinc-800 hidden md:block" />
-
-            <span className="text-[11px] font-medium text-zinc-500 mr-0.5 flex items-center gap-1 select-none">
-              📝 {lang === 'es' ? 'Plantillas:' : 'Templates:'}
-            </span>
-            <button
-              type="button"
-              onClick={() => handleInsertTemplate('import_channel')}
-              className="text-xs bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/40 hover:border-emerald-600/60 px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-              title={lang === 'es' ? 'Cargar plantilla para extraer un canal de YouTube' : 'Load template to extract a YouTube channel'}
-            >
-              📥 {lang === 'es' ? 'Extraer Canal' : 'Extract Channel'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleInsertTemplate('channel')}
-              className="text-xs bg-purple-950/40 hover:bg-purple-900/60 text-purple-300 border border-purple-800/40 hover:border-purple-600/60 px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-              title={lang === 'es' ? 'Cargar preguntas para crear un canal' : 'Load questions to create a channel'}
-            >
-              🏗️ {lang === 'es' ? 'Crear Canal' : 'Create Channel'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleInsertTemplate('video')}
-              className="text-xs bg-blue-950/40 hover:bg-blue-900/60 text-blue-300 border border-blue-800/40 hover:border-blue-600/60 px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-              title={lang === 'es' ? 'Cargar preguntas para planificar un video' : 'Load questions to plan a video'}
-            >
-              🎬 {lang === 'es' ? 'Crear Video' : 'Create Video'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleInsertTemplate('script')}
-              className="text-xs bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-300 border border-indigo-800/40 hover:border-indigo-600/60 px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-              title={lang === 'es' ? 'Cargar preguntas para redactar guion' : 'Load questions to write script'}
-            >
-              ✍️ {lang === 'es' ? 'Guionista' : 'Script'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleInsertTemplate('image')}
-              className="text-xs bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border border-amber-800/40 hover:border-amber-600/60 px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-              title={lang === 'es' ? 'Cargar preguntas para diseñar miniatura o imagen' : 'Load questions to design thumbnail'}
-            >
-              🎨 {lang === 'es' ? 'Miniatura / Arte' : 'Thumbnail'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleInsertTemplate('editor')}
-              className="text-xs bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/40 hover:border-emerald-600/60 px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-              title={lang === 'es' ? 'Cargar pauta de edición' : 'Load editing checklist'}
-            >
-              ✂️ {lang === 'es' ? 'Editor' : 'Editor'}
-            </button>
-          </div>
-
-          {/* Deep Thinking Toggle */}
-          <div className="flex items-center">
-            <label 
-              className={`cursor-pointer text-xs flex items-center gap-2 px-3 py-1 rounded-md border transition-all select-none ${
-                isDeepThinking
-                  ? 'bg-purple-900/40 border-purple-500/70 text-purple-200 shadow-sm shadow-purple-500/20 font-medium'
-                  : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-300 hover:border-zinc-700'
-              }`}
-              title={lang === 'es' ? 'Activa razonamiento profundo paso a paso para tareas complejas' : 'Enable deep step-by-step reasoning for complex tasks'}
-            >
-              <input
-                type="checkbox"
-                checked={!!isDeepThinking}
-                onChange={(e) => onToggleDeepThinking && onToggleDeepThinking(e.target.checked)}
-                className="rounded bg-zinc-800 border-zinc-700 text-purple-600 focus:ring-0 focus:ring-offset-0 cursor-pointer h-3.5 w-3.5"
-              />
-              <span className="flex items-center gap-1.5">
-                🧠 {lang === 'es' ? 'Pensamiento Profundo' : 'Deep Thinking'}
-              </span>
-              {isDeepThinking && (
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping" />
-              )}
-            </label>
-          </div>
-        </div>
-
+      <div className="p-3 sm:p-4 border-t border-zinc-800 bg-[#0f0f12] flex flex-col gap-2.5">
         {/* Input bar */}
         <div className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}
             rows={Math.min(6, Math.max(2, inputPrompt.split('\n').length))}
-            placeholder={lang === 'es' ? 'Escribe tu mensaje o selecciona una plantilla de arriba... (Shift+Enter para salto de línea, Enter para enviar)' : 'Type a message or select a template above... (Shift+Enter for newline, Enter to send)'}
+            placeholder={lang === 'es' ? 'Escribe tu mensaje... (Shift+Enter para salto de línea, Enter para enviar)' : 'Type a message... (Shift+Enter for newline, Enter to send)'}
             value={inputPrompt}
             onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={(e) => {

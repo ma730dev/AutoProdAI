@@ -44,6 +44,12 @@ No asumas la arquitectura. Navega a `docs/index.md`, lee el contexto de tu tarea
 - **PROHIBIDO** para la IA ejecutar comandos de arneses (`pnpm db:migrate`, `pnpm deploy:prod`, `pnpm deploy:vercel`, `pnpm build:exe`, scripts de `harness/`) de forma autónoma.
 - La IA puede crear, optimizar, documentar y mantener los scripts y herramientas dentro de `harness/`, pero **ÚNICAMENTE el usuario tiene la potestad de disparar su ejecución manual** desde su terminal cuando lo considere pertinente.
 
+### 7. ESTRICTA PROHIBICIÓN DE INICIATIVAS NO PEDIDAS (CERO AGREGADOS FANTASMA EN UI Y CÓDIGO)
+- **PROHIBIDO** crear o insertar botones, barras, enlaces, toggles, widgets flotantes, badges o componentes visuales que el usuario NO haya solicitado explícitamente en su mensaje.
+- La IA DEBE apegarse de forma quirúrgica al alcance estricto pedido por el usuario. Si el usuario pide modificar, mover o eliminar algo, se ejecuta eso y NADA MÁS.
+- **PROHIBIDO** asumir «mejoras de experiencia», atajos espontáneos o elementos estéticos no pedidos. Si surge una duda de usabilidad o navegación, la IA está obligada a preguntar en vez de alterar la interfaz por su cuenta.
+- Toda alteración o elemento de interfaz inventado sin instrucción expresa del usuario constituye una falta grave a las directivas del repositorio.
+
 ---
 
 ## 📁 TAXONOMÍA Y ORGANIZACIÓN DEL ESPACIO DE TRABAJO (WORKSPACE)
