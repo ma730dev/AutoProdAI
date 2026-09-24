@@ -183,6 +183,10 @@ export default function VideoStudio({
   const [musicVolume, setMusicVolume] = useState<number>(0.25);
   const [muteOriginalAudio, setMuteOriginalAudio] = useState<boolean>(false);
 
+  const selectedCut = timelineCuts.find(c => c.id === selectedCutId);
+  const selectedOverlay = overlays.find(o => o.id === selectedOverlayId);
+  const selectedAudioCut = audioCuts.find(a => a.id === selectedAudioCutId);
+
   // ── PLAYHEAD Y RELOJ MAESTRO DE REPRODUCCIÓN ──
   const [playheadTime, setPlayheadTime] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -220,13 +224,17 @@ export default function VideoStudio({
   });
 
   // ── ESTADO DEL SUB-MÓDULO: HERRAMIENTA LOOPER EN INSPECTOR (-Video -> ------Looper) ──
-  const [looperSelectedClip, setLooperSelectedClip] = useState<string>('');
+  const [selectedLoopClipPaths, setSelectedLoopClipPaths] = useState<string[]>([]);
+  const [isLoopClipsSelectorOpen, setIsLoopClipsSelectorOpen] = useState<boolean>(false);
   const [looperDurationMode, setLooperDurationMode] = useState<'time' | 'songs'>('time');
   const [looperCustomMinutes, setLooperCustomMinutes] = useState<number>(15);
   const [looperCustomSeconds, setLooperCustomSeconds] = useState<number>(0);
   const [looperSongSelectionMode, setLooperSongSelectionMode] = useState<'track_a1' | 'choose_songs'>('choose_songs');
   const [looperSelectedSongPaths, setLooperSelectedSongPaths] = useState<string[]>([]);
   const [looperAddSongsToTimeline, setLooperAddSongsToTimeline] = useState<boolean>(true);
+  const [isScanningLooperAudio, setIsScanningLooperAudio] = useState<boolean>(false);
+  const [looperTotalAudioSeconds, setLooperTotalAudioSeconds] = useState<number>(0);
+  const [looperTotalAudioFormatted, setLooperTotalAudioFormatted] = useState<string>('0s');
 
   // Cargar carpetas del workspace al montar
   useEffect(() => {
@@ -505,10 +513,17 @@ export default function VideoStudio({
         const saved = await ControladorClient.uploadStreamFile(file, targetFolder || undefined, 'Videos');
 
         if (saved && saved.path) {
-          handleAddClipToTimeline(saved.path, file.name);
+          autoDetectTargetFolder(saved.path);
+          await inspectAndAttachMeta(saved.path, file.name);
+          setSelectedLoopClipPaths(prev => prev.length === 0 ? [saved.path] : prev);
         }
       }
-      toast.success(lang === 'es' ? 'Metraje importado con éxito' : 'Footage imported successfully', { id: toastId });
+      toast.success(
+        lang === 'es'
+          ? `${videoFiles.length} video(s) importado(s) a la bandeja de medios del proyecto`
+          : `${videoFiles.length} video(s) imported to project media bin`,
+        { id: toastId }
+      );
     } catch (err: any) {
       toast.error(err.message || 'Error importando videos', { id: toastId });
     } finally {
@@ -932,12 +947,30 @@ export default function VideoStudio({
         const sourceCycleDur = cut.duration > 0 ? cut.duration : 15;
         // Si el corte individual tiene bucle activo, calcular residuo del ciclo
         const cycleElapsed = cut.loopToAudio ? (elapsed % sourceCycleDur) : elapsed;
-        const offsetInClip = cut.isReversed
+
+        let activePath = cut.clipPath;
+        let offsetInClip = cut.isReversed
           ? Math.max(cut.startTime, cut.endTime - cycleElapsed)
           : (cut.startTime + cycleElapsed);
+
+        // Si es una secuencia de múltiples clips en bucle:
+        if (cut.loopToAudio && cut.loopClips && cut.loopClips.length > 0) {
+          let subAccum = 0;
+          for (const sub of cut.loopClips) {
+            const subDur = sub.duration > 0 ? sub.duration : 15;
+            if (cycleElapsed >= subAccum && cycleElapsed < subAccum + subDur) {
+              activePath = sub.path;
+              offsetInClip = cycleElapsed - subAccum;
+              break;
+            }
+            subAccum += subDur;
+          }
+        }
+
         return {
           cut,
           index: i,
+          activeClipPath: activePath,
           offsetInClip,
           accumulatedStart: accumulated,
           effectiveCutDur,
@@ -963,7 +996,8 @@ export default function VideoStudio({
   const activeVideoSrc = useMemo(() => {
     if (previewVideoUrl) return previewVideoUrl;
     if (!currentResolvedClip) return null;
-    return `/api/assets/stream?path=${encodeURIComponent(currentResolvedClip.cut.clipPath)}`;
+    const clipPath = (currentResolvedClip as any).activeClipPath || currentResolvedClip.cut.clipPath;
+    return `/api/assets/stream?path=${encodeURIComponent(clipPath)}`;
   }, [previewVideoUrl, currentResolvedClip]);
 
   // ── RELOJ MAESTRO DE REPRODUCCIÓN (REQUESTANIMATIONFRAME) ──
@@ -1034,7 +1068,7 @@ export default function VideoStudio({
       return;
     }
 
-    const expectedClipPath = currentResolvedClip.cut.clipPath;
+    const expectedClipPath = (currentResolvedClip as any).activeClipPath || currentResolvedClip.cut.clipPath;
     const targetOffset = currentResolvedClip.offsetInClip;
     const currentSrc = video.currentSrc || video.src || '';
     const hasDifferentSource = !currentSrc.includes(encodeURIComponent(expectedClipPath)) && !currentSrc.endsWith(expectedClipPath);
@@ -1222,16 +1256,48 @@ export default function VideoStudio({
       }
 
       const res = await ControladorClient.renderTimeline({
-        cuts: timelineCuts.map(c => ({
-          clip_path: c.clipPath,
-          start_time: c.startTime,
-          end_time: c.endTime,
-          duration: c.duration,
-          loop_to_duration: (c.loopToAudio && c.loopDuration && c.loopDuration > 0)
+        cuts: timelineCuts.flatMap(c => {
+          const effectiveDur = (c.loopToAudio && c.loopDuration && c.loopDuration > 0)
             ? c.loopDuration
-            : (c.loopToAudio ? totalTimelineDuration : null),
-          is_reversed: !!c.isReversed,
-        })),
+            : (c.loopToAudio ? totalTimelineDuration : c.duration);
+
+          if (c.loopToAudio && c.loopClips && c.loopClips.length > 1) {
+            const cycleClips = c.loopClips;
+            const expandedCuts: any[] = [];
+            let elapsed = 0;
+            let cycleIdx = 0;
+
+            while (elapsed < effectiveDur - 0.05) {
+              const subClip = cycleClips[cycleIdx % cycleClips.length];
+              const remaining = effectiveDur - elapsed;
+              const subDur = Math.min(subClip.duration || 15, remaining);
+
+              expandedCuts.push({
+                clip_path: subClip.path,
+                start_time: 0,
+                end_time: subDur,
+                duration: subDur,
+                loop_to_duration: null,
+                is_reversed: false,
+              });
+
+              elapsed += subDur;
+              cycleIdx++;
+            }
+            return expandedCuts;
+          }
+
+          return [{
+            clip_path: c.clipPath,
+            start_time: c.startTime,
+            end_time: c.endTime,
+            duration: c.duration,
+            loop_to_duration: (c.loopToAudio && c.loopDuration && c.loopDuration > 0)
+              ? c.loopDuration
+              : (c.loopToAudio ? totalTimelineDuration : null),
+            is_reversed: !!c.isReversed,
+          }];
+        }),
         overlays: overlays.map(o => ({
           type: o.type,
           text: o.text,
@@ -1306,36 +1372,59 @@ export default function VideoStudio({
   };
 
   // ── HERRAMIENTAS Y CÁLCULOS DEL ÁRBOL LOOPER (-Video -> ------Looper) ──
-  const availableClipsForLoop = useMemo(() => {
-    if (projectClips.length > 0) return projectClips;
-    return timelineCuts.map(c => ({
-      name: c.name,
-      path: c.clipPath,
-      duration: c.duration,
-    }));
-  }, [projectClips, timelineCuts]);
-
-  const effectiveLooperClipPath = useMemo(() => {
-    if (looperSelectedClip && availableClipsForLoop.some(c => c.path === looperSelectedClip)) {
-      return looperSelectedClip;
+  // Clips seleccionados para la secuencia del bucle
+  const selectedLoopClips = useMemo(() => {
+    if (selectedLoopClipPaths.length > 0) {
+      return selectedLoopClipPaths
+        .map(p => {
+          const fromProj = projectClips.find(c => c.path === p);
+          if (fromProj) return fromProj;
+          if (selectedCut?.loopClips) {
+            const fromCut = selectedCut.loopClips.find(c => c.path === p);
+            if (fromCut) return { name: fromCut.name, path: fromCut.path, duration: fromCut.duration } as VideoItem;
+          }
+          const fromTimeline = timelineCuts.find(c => c.clipPath === p);
+          if (fromTimeline) return { name: fromTimeline.name, path: fromTimeline.clipPath, duration: fromTimeline.duration } as VideoItem;
+          return null;
+        })
+        .filter(Boolean) as VideoItem[];
     }
-    const currentSelectedCut = timelineCuts.find(c => c.id === selectedCutId);
-    if (currentSelectedCut) return currentSelectedCut.clipPath;
-    if (availableClipsForLoop.length > 0) return availableClipsForLoop[0].path;
-    return '';
-  }, [looperSelectedClip, availableClipsForLoop, timelineCuts, selectedCutId]);
+    if (selectedCut) {
+      if (selectedCut.loopClips && selectedCut.loopClips.length > 0) {
+        return selectedCut.loopClips.map(c => ({
+          name: c.name,
+          path: c.path,
+          duration: c.duration,
+        } as VideoItem));
+      }
+      const match = projectClips.find(c => c.path === selectedCut.clipPath);
+      if (match) return [match];
+      return [{
+        name: selectedCut.name,
+        path: selectedCut.clipPath,
+        duration: selectedCut.duration,
+      }];
+    }
+    if (projectClips.length > 0) {
+      return [projectClips[0]];
+    }
+    if (timelineCuts.length > 0) {
+      return [{
+        name: timelineCuts[0].name,
+        path: timelineCuts[0].clipPath,
+        duration: timelineCuts[0].duration,
+      }];
+    }
+    return [];
+  }, [selectedLoopClipPaths, projectClips, selectedCut, timelineCuts]);
 
-  const targetLoopClip = useMemo(() => {
-    return availableClipsForLoop.find(c => c.path === effectiveLooperClipPath);
-  }, [availableClipsForLoop, effectiveLooperClipPath]);
+  // Duración de 1 ciclo completo (la vuelta completa de los clips seleccionados)
+  const loopCycleDuration = useMemo(() => {
+    if (selectedLoopClips.length === 0) return 15;
+    return selectedLoopClips.reduce((sum, c) => sum + (c.duration && c.duration > 0 ? c.duration : 15), 0);
+  }, [selectedLoopClips]);
 
-  const targetLoopClipDuration = useMemo(() => {
-    if (!targetLoopClip) return 15;
-    if (targetLoopClip.duration && targetLoopClip.duration > 0) return targetLoopClip.duration;
-    const matchTimeline = timelineCuts.find(c => c.clipPath === targetLoopClip.path);
-    return matchTimeline?.duration || 15;
-  }, [targetLoopClip, timelineCuts]);
-
+  // Duración total objetivo del bucle
   const calculatedLoopDuration = useMemo(() => {
     if (looperDurationMode === 'time') {
       const mins = Math.max(0, looperCustomMinutes || 0);
@@ -1362,19 +1451,95 @@ export default function VideoStudio({
     }
   }, [looperDurationMode, looperCustomMinutes, looperCustomSeconds, looperSongSelectionMode, looperSelectedSongPaths, maxAudioEnd, projectAudioList]);
 
+  // Vueltas calculadas de la secuencia
   const calculatedLoopCycles = useMemo(() => {
-    if (targetLoopClipDuration <= 0) return 1;
-    return Number((calculatedLoopDuration / targetLoopClipDuration).toFixed(1));
-  }, [calculatedLoopDuration, targetLoopClipDuration]);
+    if (loopCycleDuration <= 0) return 1;
+    return Number((calculatedLoopDuration / loopCycleDuration).toFixed(1));
+  }, [calculatedLoopDuration, loopCycleDuration]);
 
-  // Aplicar bucle amarillo al timeline
-  const handleApplyLooper = () => {
-    if (!targetLoopClip) {
-      toast.error(lang === 'es' ? 'Selecciona un clip del proyecto primero' : 'Select a project clip first');
+  // Manejadores de selección y orden de clips para el bucle
+  const handleToggleLoopClipSelection = (clipPath: string) => {
+    setSelectedLoopClipPaths(prev => {
+      const base = prev.length > 0 ? prev : selectedLoopClips.map(c => c.path);
+      if (base.includes(clipPath)) {
+        if (base.length <= 1) {
+          toast.info(lang === 'es' ? 'El bucle debe tener al menos 1 video' : 'Loop must have at least 1 video');
+          return base;
+        }
+        return base.filter(p => p !== clipPath);
+      } else {
+        return [...base, clipPath];
+      }
+    });
+  };
+
+  const handleMoveLoopClipOrder = (index: number, direction: 'up' | 'down') => {
+    setSelectedLoopClipPaths(prev => {
+      const next = prev.length > 0 ? [...prev] : selectedLoopClips.map(c => c.path);
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= next.length) return prev;
+      const temp = next[index];
+      next[index] = next[targetIndex];
+      next[targetIndex] = temp;
+      return next;
+    });
+  };
+
+  const handleRemoveLoopClipFromSequence = (index: number) => {
+    setSelectedLoopClipPaths(prev => {
+      const next = prev.length > 0 ? [...prev] : selectedLoopClips.map(c => c.path);
+      if (next.length <= 1) {
+        toast.info(lang === 'es' ? 'El bucle debe tener al menos 1 video' : 'Loop must have at least 1 video');
+        return prev;
+      }
+      return next.filter((_, i) => i !== index);
+    });
+  };
+
+  // Ajustar duración del bucle (Alargar o Acortar libremente en inspector)
+  const handleAdjustLoopDurationSeconds = (deltaSeconds: number) => {
+    const currentDur = calculatedLoopDuration;
+    const newDur = Math.max(loopCycleDuration, Math.round(currentDur + deltaSeconds));
+    const mins = Math.floor(newDur / 60);
+    const secs = Math.round(newDur % 60);
+    setLooperCustomMinutes(mins);
+    setLooperCustomSeconds(secs);
+    if (looperDurationMode !== 'time') {
+      setLooperDurationMode('time');
+    }
+    if (selectedCut && selectedCut.loopToAudio) {
+      setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
+        ...c,
+        loopDuration: newDur,
+      } : c));
+    }
+  };
+
+  // Sincronizar selección de clips del bucle cuando cambia el corte seleccionado en timeline
+  useEffect(() => {
+    if (selectedCut && selectedCut.loopToAudio) {
+      if (selectedCut.loopClips && selectedCut.loopClips.length > 0) {
+        setSelectedLoopClipPaths(selectedCut.loopClips.map(c => c.path));
+      } else if (selectedCut.clipPath) {
+        setSelectedLoopClipPaths([selectedCut.clipPath]);
+      }
+      if (selectedCut.loopDuration) {
+        const mins = Math.floor(selectedCut.loopDuration / 60);
+        const secs = Math.round(selectedCut.loopDuration % 60);
+        setLooperCustomMinutes(mins);
+        setLooperCustomSeconds(secs);
+      }
+    }
+  }, [selectedCut?.id, selectedCut?.loopToAudio, selectedCut?.loopDuration]);
+
+  // Crear o aplicar bucle amarillo al timeline
+  const handleCreateOrApplyLoop = () => {
+    if (selectedLoopClips.length === 0) {
+      toast.error(lang === 'es' ? 'Selecciona al menos un clip del proyecto para el bucle' : 'Select at least one clip for the loop');
       return;
     }
 
-    // Si se seleccionaron canciones del proyecto y se solicitó colocarlas en A1
+    // 1. Si se eligieron canciones del proyecto y se solicitó colocarlas en A1
     if (looperDurationMode === 'songs' && looperSongSelectionMode === 'choose_songs' && looperAddSongsToTimeline) {
       const songsToAdd = projectAudioList.filter(s => looperSelectedSongPaths.includes(s.path));
       if (songsToAdd.length > 0) {
@@ -1405,25 +1570,49 @@ export default function VideoStudio({
       }
     }
 
-    // Actualizar corte existente o añadir nuevo al timeline
-    const currentSelectedCut = timelineCuts.find(c => c.id === selectedCutId);
-    const existingCutIndex = currentSelectedCut && currentSelectedCut.clipPath === targetLoopClip.path
-      ? timelineCuts.findIndex(c => c.id === currentSelectedCut.id)
-      : timelineCuts.findIndex(c => c.clipPath === targetLoopClip.path);
+    const loopSubClips = selectedLoopClips.map(c => ({
+      path: c.path,
+      name: c.name,
+      duration: c.duration && c.duration > 0 ? c.duration : 15,
+    }));
 
-    if (existingCutIndex !== -1) {
-      const cutIdToUpdate = timelineCuts[existingCutIndex].id;
-      setTimelineCuts(prev => prev.map(c => c.id === cutIdToUpdate ? {
+    const loopName = selectedLoopClips.length === 1
+      ? selectedLoopClips[0].name
+      : `Bucle (${selectedLoopClips.length} clips: ${selectedLoopClips.map(c => c.name).join(' → ')})`;
+
+    // Si hay un clip seleccionado en el timeline, actualizarlo
+    if (selectedCut) {
+      setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
         ...c,
+        name: loopName,
+        clipPath: selectedLoopClips[0].path,
+        duration: loopCycleDuration,
+        endTime: loopCycleDuration,
         loopToAudio: true,
         loopDuration: calculatedLoopDuration,
+        loopClips: loopSubClips,
       } : c));
-      setSelectedCutId(cutIdToUpdate);
       toast.success(lang === 'es'
-        ? `Bucle amarillo activado: ${targetLoopClip.name} (${Math.floor(calculatedLoopDuration / 60)}m ${(calculatedLoopDuration % 60).toFixed(0)}s, ${calculatedLoopCycles} vueltas)`
-        : `Yellow loop enabled: ${targetLoopClip.name} (${Math.floor(calculatedLoopDuration / 60)}m ${(calculatedLoopDuration % 60).toFixed(0)}s)`);
+        ? `Bucle amarillo actualizado en timeline (${Math.floor(calculatedLoopDuration / 60)}m ${(calculatedLoopDuration % 60).toFixed(0)}s, ${calculatedLoopCycles} vueltas)`
+        : `Yellow loop updated (${Math.floor(calculatedLoopDuration / 60)}m)`);
     } else {
-      handleAddClipToTimeline(targetLoopClip.path, targetLoopClip.name, true, calculatedLoopDuration);
+      // Si no, añadir nuevo corte amarillo al timeline
+      const newCut: TimelineCut = {
+        id: `cut-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        clipPath: selectedLoopClips[0].path,
+        name: loopName,
+        startTime: 0,
+        endTime: loopCycleDuration,
+        duration: loopCycleDuration,
+        loopToAudio: true,
+        loopDuration: calculatedLoopDuration,
+        loopClips: loopSubClips,
+      };
+      setTimelineCuts(prev => [...prev, newCut]);
+      setSelectedCutId(newCut.id);
+      toast.success(lang === 'es'
+        ? `Bucle amarillo creado en timeline (${Math.floor(calculatedLoopDuration / 60)}m ${(calculatedLoopDuration % 60).toFixed(0)}s, ${calculatedLoopCycles} vueltas)`
+        : `Yellow loop created (${Math.floor(calculatedLoopDuration / 60)}m)`);
     }
   };
 
@@ -1432,13 +1621,704 @@ export default function VideoStudio({
       ...c,
       loopToAudio: false,
       loopDuration: undefined,
+      loopClips: undefined,
     } : c));
     toast.info(lang === 'es' ? 'Bucle desactivado (clip restaurado a duración normal)' : 'Loop removed');
   };
 
-  const selectedCut = timelineCuts.find(c => c.id === selectedCutId);
-  const selectedOverlay = overlays.find(o => o.id === selectedOverlayId);
-  const selectedAudioCut = audioCuts.find(a => a.id === selectedAudioCutId);
+  // ── RENDERIZADOR DEL INSPECTOR DE VIDEO Y LOOPER (-Video -> ------Looper) ──
+  const renderVideoInspector = () => {
+    return (
+      <div className="flex flex-col gap-3">
+        {/* ENCABEZADO SUPERIOR DEL INSPECTOR */}
+        <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
+          <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+            <span>🎛️</span>
+            <span>{lang === 'es' ? 'Inspector de Elementos' : 'Element Inspector'}</span>
+          </span>
+          {selectedCut && (
+            <button
+              type="button"
+              onClick={() => {
+                setTimelineCuts(prev => prev.filter(c => c.id !== selectedCut.id));
+                setSelectedCutId(null);
+                toast.info(lang === 'es' ? 'Clip eliminado de la línea de tiempo' : 'Clip removed from timeline');
+              }}
+              className="text-[10px] text-red-400 hover:text-red-300 font-bold cursor-pointer"
+            >
+              ✕ {lang === 'es' ? 'Eliminar del Timeline' : 'Remove from Timeline'}
+            </button>
+          )}
+        </div>
+
+        {/* ── ARBOL JERARQUICO: NODO RAIZ - Video ───────────────────────── */}
+        <div className="border border-zinc-800/80 rounded-xl bg-zinc-950/40 overflow-hidden flex flex-col">
+          {/* Fila del Nodo Padre: - Video */}
+          <button
+            type="button"
+            onClick={() => setIsVideoTreeOpen(prev => !prev)}
+            className="w-full px-3 py-2 bg-zinc-900/90 hover:bg-zinc-850 flex items-center justify-between text-xs font-bold text-purple-300 cursor-pointer border-b border-zinc-800/60 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[10px]">{isVideoTreeOpen ? '▼' : '▶'}</span>
+              <span>🎬</span>
+              <span>- Video</span>
+            </div>
+            {selectedCut ? (
+              <span className="text-[10px] text-zinc-400 font-mono font-normal truncate max-w-[130px]">
+                {selectedCut.name}
+              </span>
+            ) : (
+              <span className="text-[10px] text-zinc-500 font-normal">
+                {lang === 'es' ? 'Sin clip en timeline' : 'No timeline cut'}
+              </span>
+            )}
+          </button>
+
+          {/* Contenido de - Video (si está expandido) */}
+          {isVideoTreeOpen && (
+            <div className="p-2.5 flex flex-col gap-2.5 bg-zinc-950/30">
+              {/* Si hay un clip seleccionado en el timeline: controles de recorte, encuadre, etc. */}
+              {selectedCut ? (
+                <>
+                  <div className="flex flex-col gap-1 text-xs">
+                    <span className="text-[10px] text-zinc-500 uppercase font-bold">{lang === 'es' ? 'Clip Seleccionado' : 'Selected Clip'}</span>
+                    <span className="font-semibold text-zinc-200 truncate">{selectedCut.name}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-[10px] text-zinc-500 uppercase font-bold block">In-Point (s)</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={selectedCut.startTime}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
+                            ...c,
+                            startTime: val,
+                            duration: Math.max(0.3, c.endTime - val)
+                          } : c));
+                        }}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 font-mono text-xs"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-500 uppercase font-bold block">Out-Point (s)</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.3"
+                        value={selectedCut.endTime}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 1;
+                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
+                            ...c,
+                            endTime: val,
+                            duration: Math.max(0.3, val - c.startTime)
+                          } : c));
+                        }}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Reordenar Clip en la Secuencia (Mover Video) */}
+                  <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-1.5">
+                    <span className="text-[10px] text-zinc-500 uppercase font-bold">{lang === 'es' ? 'Mover Clip en Secuencia' : 'Move in Sequence'}</span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveCutOrder(selectedCut.id, 'left')}
+                        disabled={timelineCuts.findIndex(c => c.id === selectedCut.id) === 0}
+                        className="py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-850 disabled:opacity-30 disabled:pointer-events-none text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                        title="Mover clip hacia la izquierda (antes)"
+                      >
+                        <span>◀ {lang === 'es' ? 'Mover Antes' : 'Move Before'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveCutOrder(selectedCut.id, 'right')}
+                        disabled={timelineCuts.findIndex(c => c.id === selectedCut.id) === timelineCuts.length - 1}
+                        className="py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-850 disabled:opacity-30 disabled:pointer-events-none text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                        title="Mover clip hacia la derecha (después)"
+                      >
+                        <span>{lang === 'es' ? 'Mover Después' : 'Move After'} ▶</span>
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDuplicateCut(selectedCut.id)}
+                      className="w-full py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1.5 cursor-pointer mt-0.5 transition-colors"
+                    >
+                      <span>📋</span>
+                      <span>{lang === 'es' ? 'Duplicar este Clip' : 'Duplicate Clip'}</span>
+                    </button>
+                  </div>
+
+                  {/* 📐 Encuadre & Posición del Video (Pan & Zoom) */}
+                  <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-purple-300 uppercase font-bold flex items-center gap-1">
+                        <span>📐</span>
+                        <span>{lang === 'es' ? 'Encuadre & Paneo (Canvas)' : 'Framing & Pan'}</span>
+                      </span>
+                      {(selectedCut.panX || selectedCut.panY || (selectedCut.zoom && selectedCut.zoom !== 1)) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panX: 0, panY: 0, zoom: 1 } : c));
+                            toast.success(lang === 'es' ? 'Encuadre centrado' : 'Centered');
+                          }}
+                          className="text-[10px] text-purple-400 hover:text-purple-300 cursor-pointer"
+                        >
+                          {lang === 'es' ? 'Centrar 🎯' : 'Center 🎯'}
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
+                        <span>{lang === 'es' ? 'Zoom / Escala' : 'Zoom / Scale'}</span>
+                        <span className="font-mono text-purple-300 font-bold">{Math.round((selectedCut.zoom || 1) * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="2.5"
+                        step="0.05"
+                        value={selectedCut.zoom || 1}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 1;
+                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, zoom: val } : c));
+                        }}
+                        className="w-full accent-purple-500 cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-zinc-400 block mb-0.5">Pan X: {selectedCut.panX || 0}%</span>
+                        <input
+                          type="range"
+                          min="-50"
+                          max="50"
+                          value={selectedCut.panX || 0}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panX: val } : c));
+                          }}
+                          className="w-full accent-purple-500 cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-zinc-400 block mb-0.5">Pan Y: {selectedCut.panY || 0}%</span>
+                        <input
+                          type="range"
+                          min="-50"
+                          max="50"
+                          value={selectedCut.panY || 0}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panY: val } : c));
+                          }}
+                          className="w-full accent-purple-500 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Toggle de Invertir Video (Reverse) */}
+                  <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-1.5">
+                    <label className="flex items-center justify-between text-xs cursor-pointer select-none">
+                      <span className="font-bold text-cyan-200 flex items-center gap-1.5">
+                        <span>⏪</span>
+                        <span>{lang === 'es' ? 'Invertir Video (Reverse)' : 'Reverse Video'}</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={!!selectedCut.isReversed}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
+                            ...c,
+                            isReversed: checked
+                          } : c));
+                          toast.success(checked ? (lang === 'es' ? 'Clip invertido' : 'Clip reversed') : (lang === 'es' ? 'Reproducción normal' : 'Normal playback'));
+                        }}
+                        className="rounded accent-cyan-500 cursor-pointer"
+                      />
+                    </label>
+                  </div>
+                </>
+              ) : (
+                <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800/70 text-zinc-400 text-[11px] leading-relaxed">
+                  🎬 {lang === 'es'
+                    ? 'No hay clip individual seleccionado en la línea de tiempo. Puedes seleccionar videos del proyecto abajo en el Looper para armar un bucle.'
+                    : 'No clip selected in timeline. You can pick project videos below in the Looper to build a loop.'}
+                </div>
+              )}
+
+              {/* ── SUB-NODO JERARQUICO: ------ Looper ───────────────────────── */}
+              <div className="mt-1 pt-2 border-t border-zinc-800/80 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsLooperTreeOpen(prev => !prev)}
+                  className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
+                    isLooperTreeOpen
+                      ? 'bg-amber-950/60 text-amber-200 border border-amber-500/60 shadow-sm'
+                      : 'bg-zinc-900 text-zinc-300 hover:text-white border border-zinc-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px]">{isLooperTreeOpen ? '▼' : '▶'}</span>
+                    <span>🔁</span>
+                    <span className="font-mono tracking-wide">------ Looper</span>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">
+                    {selectedLoopClips.length} {selectedLoopClips.length === 1 ? 'video' : 'videos'}
+                  </span>
+                </button>
+
+                {/* Contenido desplegable del sub-nodo Looper */}
+                {isLooperTreeOpen && (
+                  <div className="ml-1 pl-2 border-l-2 border-amber-500/40 flex flex-col gap-2.5 pt-1">
+
+                    {/* 1. SELECCIONAR VIDEOS DEL PROYECTO */}
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-bold text-amber-300 flex items-center gap-1">
+                          <span>🎬</span>
+                          <span>{lang === 'es' ? 'Videos del Proyecto' : 'Project Videos'}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsLoopClipsSelectorOpen(prev => !prev)}
+                          className="text-[10px] text-amber-400 hover:text-amber-200 font-semibold cursor-pointer flex items-center gap-1"
+                        >
+                          <span>{isLoopClipsSelectorOpen ? 'Ocultar' : 'Elegir videos'}</span>
+                          <span>{isLoopClipsSelectorOpen ? '▲' : '▼'}</span>
+                        </button>
+                      </div>
+
+                      {/* Selector de clips disponibles en el proyecto (no requiere estar en timeline) */}
+                      {isLoopClipsSelectorOpen && (
+                        <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-zinc-950/80 border border-zinc-800/80 max-h-48 overflow-y-auto minimal-scrollbar">
+                          {projectClips.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center p-3 text-center gap-2 text-zinc-500 text-xs">
+                              <span>{lang === 'es' ? 'No hay videos en la bandeja del proyecto.' : 'No videos in project bin.'}</span>
+                              <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="px-2.5 py-1 rounded bg-purple-900/60 hover:bg-purple-800 text-purple-200 text-[10px] font-bold border border-purple-700 cursor-pointer"
+                              >
+                                + {lang === 'es' ? 'Importar Video (PC)' : 'Import Video (PC)'}
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between pb-1 border-b border-zinc-850 text-[10px] text-zinc-400">
+                                <span>{lang === 'es' ? 'Selecciona los que formarán el ciclo:' : 'Select cycle clips:'}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedLoopClipPaths(projectClips.map(c => c.path))}
+                                    className="text-amber-400 hover:underline cursor-pointer"
+                                  >
+                                    {lang === 'es' ? 'Todos' : 'All'}
+                                  </button>
+                                  <span>•</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedLoopClipPaths(projectClips[0] ? [projectClips[0].path] : [])}
+                                    className="text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                                  >
+                                    {lang === 'es' ? 'Reiniciar' : 'Reset'}
+                                  </button>
+                                </div>
+                              </div>
+                              {projectClips.map((clip) => {
+                                const isChecked = selectedLoopClipPaths.length > 0
+                                  ? selectedLoopClipPaths.includes(clip.path)
+                                  : (selectedCut?.clipPath === clip.path);
+                                return (
+                                  <label
+                                    key={clip.path}
+                                    className={`flex items-center justify-between p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                                      isChecked
+                                        ? 'bg-amber-950/40 border-amber-600/50 text-amber-100'
+                                        : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-300 hover:bg-zinc-900'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 truncate pr-1">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => handleToggleLoopClipSelection(clip.path)}
+                                        className="rounded accent-amber-500 cursor-pointer"
+                                      />
+                                      <span className="truncate text-[11px] font-medium">{clip.name}</span>
+                                    </div>
+                                    <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                                      {clip.durationFormatted || `${Math.round(clip.duration || 15)}s`}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 2. ORDEN DE LA SECUENCIA DEL BUCLE (CICLO REPETITIVO) */}
+                      {selectedLoopClips.length > 0 && (
+                        <div className="flex flex-col gap-1 pt-1">
+                          <span className="text-[10px] uppercase font-bold text-zinc-500">
+                            {lang === 'es' ? 'Orden del Ciclo:' : 'Cycle Order:'}
+                          </span>
+                          <div className="flex flex-col gap-1 max-h-36 overflow-y-auto minimal-scrollbar">
+                            {selectedLoopClips.map((clip, idx) => (
+                              <div
+                                key={`${clip.path}-${idx}`}
+                                className="flex items-center justify-between p-1.5 rounded-lg bg-zinc-900/80 border border-zinc-800 text-xs"
+                              >
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono flex items-center justify-center shrink-0">
+                                    {idx + 1}
+                                  </span>
+                                  <span className="truncate text-zinc-200 text-[11px]">{clip.name}</span>
+                                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                                    ({clip.duration ? `${clip.duration.toFixed(0)}s` : '15s'})
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveLoopClipOrder(idx, 'up')}
+                                    disabled={idx === 0}
+                                    className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-20 text-zinc-300 text-[10px] cursor-pointer"
+                                    title="Mover antes en el ciclo"
+                                  >
+                                    ▲
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveLoopClipOrder(idx, 'down')}
+                                    disabled={idx === selectedLoopClips.length - 1}
+                                    className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-20 text-zinc-300 text-[10px] cursor-pointer"
+                                    title="Mover después en el ciclo"
+                                  >
+                                    ▼
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveLoopClipFromSequence(idx)}
+                                    disabled={selectedLoopClips.length <= 1}
+                                    className="p-1 rounded bg-red-950/40 hover:bg-red-900/60 disabled:opacity-20 text-red-300 text-[10px] cursor-pointer"
+                                    title="Quitar del ciclo"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center justify-between text-[10px] font-mono text-amber-300/90 bg-amber-950/40 px-2 py-1 rounded border border-amber-600/30">
+                            <span>{lang === 'es' ? '1 Ciclo Completo (Vuelta):' : '1 Complete Cycle:'}</span>
+                            <span className="font-bold text-amber-200">{loopCycleDuration.toFixed(1)}s</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. DURACIÓN DEL BUCLE (LAS 2 OPCIONES + ALARGAR/ACORTAR) */}
+                    <div className="pt-2 border-t border-amber-800/40 flex flex-col gap-2">
+                      <div className="flex items-center justify-between text-[10px] uppercase font-bold text-amber-300">
+                        <span>{lang === 'es' ? 'Duración del Bucle' : 'Loop Duration'}</span>
+                        <span className="text-zinc-500 font-normal">2 {lang === 'es' ? 'Opciones' : 'Options'}</span>
+                      </div>
+
+                      {/* Selector de modo: Poner Tiempo vs Elegir Canciones */}
+                      <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setLooperDurationMode('time')}
+                          className={`py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                            looperDurationMode === 'time'
+                              ? 'bg-amber-600 text-black font-bold shadow'
+                              : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          <span>⏱️</span>
+                          <span>{lang === 'es' ? 'Poner Tiempo' : 'Set Time'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLooperDurationMode('songs')}
+                          className={`py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                            looperDurationMode === 'songs'
+                              ? 'bg-amber-600 text-black font-bold shadow'
+                              : 'text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          <span>🎵</span>
+                          <span>{lang === 'es' ? 'Elegir Canciones' : 'Pick Songs'}</span>
+                        </button>
+                      </div>
+
+                      {/* OPCION A: PONER TIEMPO DIRECTO */}
+                      {looperDurationMode === 'time' && (
+                        <div className="flex flex-col gap-2 p-2 rounded-xl bg-zinc-950/60 border border-zinc-800">
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="text-[10px] text-zinc-400 block mb-0.5">{lang === 'es' ? 'Minutos:' : 'Minutes:'}</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="600"
+                                value={looperCustomMinutes}
+                                onChange={(e) => {
+                                  const m = Math.max(0, parseInt(e.target.value) || 0);
+                                  setLooperCustomMinutes(m);
+                                  const targetTotal = m * 60 + looperCustomSeconds;
+                                  if (selectedCut && selectedCut.loopToAudio) {
+                                    setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, loopDuration: targetTotal } : c));
+                                  }
+                                }}
+                                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-amber-300 font-mono text-xs font-bold"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-zinc-400 block mb-0.5">{lang === 'es' ? 'Segundos:' : 'Seconds:'}</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="59"
+                                value={looperCustomSeconds}
+                                onChange={(e) => {
+                                  const s = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
+                                  setLooperCustomSeconds(s);
+                                  const targetTotal = looperCustomMinutes * 60 + s;
+                                  if (selectedCut && selectedCut.loopToAudio) {
+                                    setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, loopDuration: targetTotal } : c));
+                                  }
+                                }}
+                                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-amber-300 font-mono text-xs font-bold"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Presets rápidos */}
+                          <div className="flex items-center gap-1">
+                            {[5, 15, 30, 60].map(mins => (
+                              <button
+                                key={mins}
+                                type="button"
+                                onClick={() => {
+                                  setLooperCustomMinutes(mins);
+                                  setLooperCustomSeconds(0);
+                                  if (selectedCut && selectedCut.loopToAudio) {
+                                    setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, loopDuration: mins * 60 } : c));
+                                  }
+                                }}
+                                className={`flex-1 py-1 rounded text-[10px] font-mono font-semibold border cursor-pointer transition-all ${
+                                  looperCustomMinutes === mins && looperCustomSeconds === 0
+                                    ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                                    : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+                                }`}
+                              >
+                                {mins}m
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* OPCION B: ELEGIR CANCIONES */}
+                      {looperDurationMode === 'songs' && (
+                        <div className="flex flex-col gap-2 p-2 rounded-xl bg-zinc-950/60 border border-zinc-800 text-xs">
+                          {/* Sub-selector de canciones */}
+                          <div className="flex flex-col gap-1.5">
+                            <label className="flex items-center gap-2 cursor-pointer text-[11px] text-zinc-300">
+                              <input
+                                type="radio"
+                                name="song_mode"
+                                checked={looperSongSelectionMode === 'track_a1'}
+                                onChange={() => setLooperSongSelectionMode('track_a1')}
+                                className="accent-amber-500"
+                              />
+                              <span>
+                                {lang === 'es' ? 'Sincronizar con Audio de Pista A1' : 'Match Track A1 Audio'}
+                                {maxAudioEnd > 0 && <span className="text-amber-300 font-mono ml-1">({maxAudioEnd.toFixed(1)}s)</span>}
+                              </span>
+                            </label>
+
+                            <label className="flex items-center gap-2 cursor-pointer text-[11px] text-zinc-300">
+                              <input
+                                type="radio"
+                                name="song_mode"
+                                checked={looperSongSelectionMode === 'choose_songs'}
+                                onChange={() => setLooperSongSelectionMode('choose_songs')}
+                                className="accent-amber-500"
+                              />
+                              <span>{lang === 'es' ? 'Elegir canciones del proyecto' : 'Choose project songs'}</span>
+                            </label>
+                          </div>
+
+                          {/* Lista de canciones del proyecto */}
+                          {looperSongSelectionMode === 'choose_songs' && (
+                            <div className="flex flex-col gap-1 pt-1 max-h-36 overflow-y-auto minimal-scrollbar">
+                              {projectAudioList.length === 0 ? (
+                                <div className="p-2 text-center text-[10px] text-zinc-500">
+                                  {lang === 'es' ? 'No hay canciones en la carpeta Música' : 'No songs in Music folder'}
+                                </div>
+                              ) : (
+                                projectAudioList.map(song => {
+                                  const isSongSelected = looperSelectedSongPaths.includes(song.path);
+                                  return (
+                                    <label
+                                      key={song.path}
+                                      className={`flex items-center justify-between p-1.5 rounded-lg border text-xs cursor-pointer ${
+                                        isSongSelected
+                                          ? 'bg-amber-950/40 border-amber-600/50 text-amber-100'
+                                          : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:bg-zinc-900'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-1.5 truncate">
+                                        <input
+                                          type="checkbox"
+                                          checked={isSongSelected}
+                                          onChange={() => {
+                                            setLooperSelectedSongPaths(prev =>
+                                              prev.includes(song.path)
+                                                ? prev.filter(p => p !== song.path)
+                                                : [...prev, song.path]
+                                            );
+                                          }}
+                                          className="rounded accent-amber-500 cursor-pointer"
+                                        />
+                                        <span className="truncate text-[11px]">{song.name}</span>
+                                      </div>
+                                      <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                                        {song.duration_formatted || `${song.duration_seconds}s`}
+                                      </span>
+                                    </label>
+                                  );
+                                })
+                              )}
+
+                              <label className="flex items-center gap-1.5 text-[10px] text-zinc-400 cursor-pointer pt-1">
+                                <input
+                                  type="checkbox"
+                                  checked={looperAddSongsToTimeline}
+                                  onChange={(e) => setLooperAddSongsToTimeline(e.target.checked)}
+                                  className="rounded accent-amber-500"
+                                />
+                                <span>{lang === 'es' ? 'Insertar canciones seleccionadas en pista A1' : 'Insert selected songs into Track A1'}</span>
+                              </label>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ALARGAR O ACORTAR EL BUCLE LIBREMENTE (EN AMBAS OPCIONES) */}
+                      <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-amber-950/30 border border-amber-500/40">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-amber-200/90 font-medium">
+                            {lang === 'es' ? 'Alargar / Acortar Bucle:' : 'Stretch / Shorten Loop:'}
+                          </span>
+                          <span className="font-mono font-bold text-amber-300">
+                            {Math.floor(calculatedLoopDuration / 60)}m {Math.round(calculatedLoopDuration % 60)}s
+                          </span>
+                        </div>
+
+                        {/* Botones de ajuste rápido (Alargar / Acortar) */}
+                        <div className="grid grid-cols-4 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustLoopDurationSeconds(-60)}
+                            className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
+                            title="Acortar 1 minuto"
+                          >
+                            - 1m
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustLoopDurationSeconds(-10)}
+                            className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
+                            title="Acortar 10 segundos"
+                          >
+                            - 10s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustLoopDurationSeconds(10)}
+                            className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
+                            title="Alargar 10 segundos"
+                          >
+                            + 10s
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustLoopDurationSeconds(60)}
+                            className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
+                            title="Alargar 1 minuto"
+                          >
+                            + 1m
+                          </button>
+                        </div>
+
+                        {/* Métrica de vueltas y recordatorio elástico */}
+                        <div className="flex items-center justify-between text-[10px] font-mono text-amber-300/90 bg-amber-950/60 px-2 py-1 rounded border border-amber-600/30">
+                          <span>{lang === 'es' ? 'Vueltas estimadas:' : 'Estimated cycles:'}</span>
+                          <span className="font-bold text-amber-200">↻ {calculatedLoopCycles} vueltas</span>
+                        </div>
+                        <span className="text-[9px] text-amber-300/70 leading-tight">
+                          💡 {lang === 'es'
+                            ? 'También puedes alargar o acortar el bucle amarillo en el timeline arrastrando el tirador derecho (🔁).'
+                            : 'You can also stretch or shorten the yellow block directly on the timeline dragging the right handle (🔁).'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 4. BOTON DE ACCION: CREAR / ACTUALIZAR BUCLE */}
+                    <div className="flex flex-col gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleCreateOrApplyLoop}
+                        className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-[0.98]"
+                      >
+                        <span>⚡</span>
+                        <span>
+                          {selectedCut?.loopToAudio
+                            ? (lang === 'es' ? 'Actualizar Bucle Amarillo en Timeline' : 'Update Yellow Loop on Timeline')
+                            : (lang === 'es' ? 'Crear Bucle Amarillo en Timeline' : 'Create Yellow Loop on Timeline')}
+                        </span>
+                      </button>
+
+                      {selectedCut?.loopToAudio && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveLoopFromCut(selectedCut.id)}
+                          className="w-full py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-red-300 text-[10px] font-semibold border border-zinc-800 cursor-pointer transition-colors"
+                        >
+                          ✕ {lang === 'es' ? 'Desactivar Bucle (Restaurar a clip normal)' : 'Remove Loop (Restore to normal clip)'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const currentPreset = VIDEO_FORMAT_PRESETS.find(p => p.id === selectedFormatId) || VIDEO_FORMAT_PRESETS[0];
 
   return (
@@ -2202,288 +3082,8 @@ export default function VideoStudio({
         {/* ── PANEL DERECHO: INSPECTOR CONTEXTUAL (3 COLS) ──────────────────── */}
         <div className="lg:col-span-3 bg-[#0e0e13] border border-zinc-800/80 rounded-2xl p-3 flex flex-col gap-3 overflow-y-auto minimal-scrollbar">
 
-          {/* CASO A: Clip de Video Seleccionado */}
-          {selectedCut ? (
-            <div className="flex flex-col gap-2.5">
-              <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
-                <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                  <span>🎬</span>
-                  <span>Inspector de Clip</span>
-                </span>
-                <button
-                  onClick={() => {
-                    setTimelineCuts(prev => prev.filter(c => c.id !== selectedCut.id));
-                    setSelectedCutId(null);
-                  }}
-                  className="text-[10px] text-red-400 hover:text-red-300 font-bold cursor-pointer"
-                >
-                  ✕ Eliminar
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-1 text-xs">
-                <span className="text-[10px] text-zinc-500 uppercase font-bold">Nombre</span>
-                <span className="font-semibold text-zinc-200 truncate">{selectedCut.name}</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-[10px] text-zinc-500 uppercase font-bold block">In-Point (s)</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={selectedCut.startTime}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 0;
-                      setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
-                        ...c,
-                        startTime: val,
-                        duration: Math.max(0.3, c.endTime - val)
-                      } : c));
-                    }}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 font-mono text-xs"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-zinc-500 uppercase font-bold block">Out-Point (s)</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.3"
-                    value={selectedCut.endTime}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 1;
-                      setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
-                        ...c,
-                        endTime: val,
-                        duration: Math.max(0.3, val - c.startTime)
-                      } : c));
-                    }}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 font-mono text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Reordenar Clip en la Secuencia (Mover Video) */}
-              <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-1.5">
-                <span className="text-[10px] text-zinc-500 uppercase font-bold">Mover Clip en Secuencia</span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleMoveCutOrder(selectedCut.id, 'left')}
-                    disabled={timelineCuts.findIndex(c => c.id === selectedCut.id) === 0}
-                    className="py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                    title="Mover clip hacia la izquierda (antes)"
-                  >
-                    <span>◀ Mover Antes</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleMoveCutOrder(selectedCut.id, 'right')}
-                    disabled={timelineCuts.findIndex(c => c.id === selectedCut.id) === timelineCuts.length - 1}
-                    className="py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                    title="Mover clip hacia la derecha (después)"
-                  >
-                    <span>Mover Después ▶</span>
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleDuplicateCut(selectedCut.id)}
-                  className="w-full py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1.5 cursor-pointer mt-0.5 transition-colors"
-                >
-                  <span>📋 Duplicar este Clip</span>
-                </button>
-              </div>
-
-              {/* 📐 Encuadre & Posición del Video (Pan & Zoom) */}
-              <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-purple-300 uppercase font-bold flex items-center gap-1">
-                    <span>📐</span>
-                    <span>Encuadre & Paneo (Canvas)</span>
-                  </span>
-                  {(selectedCut.panX || selectedCut.panY || (selectedCut.zoom && selectedCut.zoom !== 1)) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panX: 0, panY: 0, zoom: 1 } : c));
-                        toast.success('Encuadre centrado');
-                      }}
-                      className="text-[10px] text-purple-400 hover:text-purple-300 cursor-pointer"
-                    >
-                      Centrar 🎯
-                    </button>
-                  )}
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
-                    <span>Zoom / Escala</span>
-                    <span className="font-mono text-purple-300 font-bold">{Math.round((selectedCut.zoom || 1) * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="2.5"
-                    step="0.05"
-                    value={selectedCut.zoom || 1}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 1;
-                      setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, zoom: val } : c));
-                    }}
-                    className="w-full accent-purple-500 cursor-pointer"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="text-[10px] text-zinc-400 block mb-0.5">Pan X: {selectedCut.panX || 0}%</span>
-                    <input
-                      type="range"
-                      min="-50"
-                      max="50"
-                      value={selectedCut.panX || 0}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panX: val } : c));
-                      }}
-                      className="w-full accent-purple-500 cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 block mb-0.5">Pan Y: {selectedCut.panY || 0}%</span>
-                    <input
-                      type="range"
-                      min="-50"
-                      max="50"
-                      value={selectedCut.panY || 0}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panY: val } : c));
-                      }}
-                      className="w-full accent-purple-500 cursor-pointer"
-                    />
-                  </div>
-                </div>
-                <span className="text-[9px] text-zinc-500 leading-tight">
-                  💡 También puedes arrastrar directamente el video sobre el Canvas para re-encuadrar la toma.
-                </span>
-              </div>
-
-              {/* Función de Bucle en el Clip (Bloque Amarillo) */}
-              <div className={`p-2.5 rounded-xl border flex flex-col gap-2 transition-all ${
-                selectedCut.loopToAudio
-                  ? 'bg-amber-950/40 border-amber-500/60 text-amber-100 shadow-sm'
-                  : 'border-zinc-800/60 bg-zinc-950/30'
-              }`}>
-                <label className="flex items-center justify-between text-xs cursor-pointer select-none">
-                  <span className={`font-bold flex items-center gap-1.5 ${selectedCut.loopToAudio ? 'text-amber-300' : 'text-zinc-300'}`}>
-                    <span>🔁</span>
-                    <span>{lang === 'es' ? 'Función de Bucle (Loop)' : 'Loop Function'}</span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={selectedCut.loopToAudio}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
-                        ...c,
-                        loopToAudio: checked,
-                        loopDuration: checked ? (c.loopDuration || Math.max(c.duration, Number((c.duration * 3).toFixed(1)))) : undefined
-                      } : c));
-                    }}
-                    className="rounded accent-amber-500 cursor-pointer"
-                  />
-                </label>
-
-                {selectedCut.loopToAudio ? (
-                  <div className="flex flex-col gap-2 pt-1 border-t border-amber-800/40">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-amber-200/80 font-medium">{lang === 'es' ? 'Duración en Timeline:' : 'Timeline Duration:'}</span>
-                      <div className="flex items-center gap-1 font-mono">
-                        <input
-                          type="number"
-                          min={selectedCut.duration || 1}
-                          max={36000}
-                          step={1}
-                          value={Math.round((selectedCut.loopDuration || selectedCut.duration * 3))}
-                          onChange={(e) => {
-                            const val = Math.max(selectedCut.duration || 1, parseFloat(e.target.value) || 1);
-                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
-                              ...c,
-                              loopDuration: val
-                            } : c));
-                          }}
-                          className="w-16 bg-zinc-900 border border-amber-500/50 rounded px-1.5 py-0.5 text-right font-bold text-amber-300 focus:outline-none focus:border-amber-400"
-                        />
-                        <span className="text-[10px] text-amber-400/80">s</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px] font-mono text-amber-300/80 bg-amber-950/60 px-2 py-1 rounded border border-amber-600/30">
-                      <span>{lang === 'es' ? 'Ciclos estimados:' : 'Estimated cycles:'}</span>
-                      <span className="font-bold text-amber-200">
-                        ↻ {((selectedCut.loopDuration || selectedCut.duration * 3) / (selectedCut.duration || 1)).toFixed(1)} vueltas
-                      </span>
-                    </div>
-
-                    {maxAudioEnd > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
-                            ...c,
-                            loopDuration: maxAudioEnd
-                          } : c));
-                          toast.success(lang === 'es' ? 'Bucle igualado a la duración del audio' : 'Loop matched to audio duration');
-                        }}
-                        className="text-[10px] py-1 px-2 rounded bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 font-semibold cursor-pointer transition-all flex items-center justify-center gap-1"
-                      >
-                        <span>🎵</span>
-                        <span>{lang === 'es' ? `Ajustar a Audio A1 (${maxAudioEnd.toFixed(1)}s)` : `Match A1 Audio (${maxAudioEnd.toFixed(1)}s)`}</span>
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-[10px] text-zinc-400 leading-tight">
-                    {lang === 'es'
-                      ? 'Actívalo para convertir este clip en un bloque amarillo extensible en la línea de tiempo.'
-                      : 'Enable to turn this clip into an extensible yellow loop block on the timeline.'}
-                  </span>
-                )}
-              </div>
-
-              {/* Toggle de Invertir Video (Reverse) */}
-              <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-1.5">
-                <label className="flex items-center justify-between text-xs cursor-pointer select-none">
-                  <span className="font-bold text-cyan-200 flex items-center gap-1.5">
-                    <span>⏪</span>
-                    <span>Invertir Video (Reverse)</span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={!!selectedCut.isReversed}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
-                        ...c,
-                        isReversed: checked
-                      } : c));
-                      toast.success(checked ? (lang === 'es' ? 'Clip invertido (de atrás hacia adelante)' : 'Clip reversed') : (lang === 'es' ? 'Reproducción normal' : 'Normal playback'));
-                    }}
-                    className="rounded accent-cyan-500 cursor-pointer"
-                  />
-                </label>
-                <span className="text-[10px] text-zinc-400 leading-tight">
-                  {lang === 'es'
-                    ? 'Empieza de atrás hacia adelante (rebobinado continuo en Canvas y render final con areverse).'
-                    : 'Plays video in reverse from end to start.'}
-                </span>
-              </div>
-            </div>
-          ) : selectedOverlay ? (
+          {/* INSPECTOR CONTEXTUAL: TEXTO, AUDIO O VIDEO/LOOPER */}
+          {selectedOverlay ? (
             /* CASO B: Overlay de Texto Seleccionado */
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
@@ -2713,22 +3313,8 @@ export default function VideoStudio({
               </button>
             </div>
           ) : (
-            /* CASO D: Estado de reposo del Inspector (sin selección activa) */
-            <div className="flex flex-col items-center justify-center text-center p-6 my-auto gap-3 text-zinc-500">
-              <div className="w-12 h-12 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-2xl shadow-inner">
-                🎛️
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-bold text-zinc-300">
-                  {lang === 'es' ? 'Inspector de Elementos' : 'Element Inspector'}
-                </span>
-                <p className="text-[11px] text-zinc-500 max-w-[200px] leading-relaxed">
-                  {lang === 'es'
-                    ? 'Selecciona un clip en la línea de tiempo, un texto o una pista de audio para editar sus propiedades.'
-                    : 'Select a video clip, text overlay or audio track to customize its properties.'}
-                </p>
-              </div>
-            </div>
+            /* CASO VIDEO & LOOPER (Árbol jerárquico -Video -> ------Looper) */
+            renderVideoInspector()
           )}
         </div>
       </div>

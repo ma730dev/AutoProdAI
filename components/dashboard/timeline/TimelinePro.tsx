@@ -16,6 +16,7 @@ export interface TimelineCut {
   panY?: number;
   zoom?: number;
   isReversed?: boolean;
+  loopClips?: { path: string; name: string; duration: number }[];
 }
 
 export interface OverlayElement {
