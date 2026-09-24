@@ -54,6 +54,7 @@ Cada funcionalidad cuenta con su **Ficha Técnica** (código, endpoints y arquit
 | **FEAT-16** | **Orquestación de Canales, Capa de Video (`config_video.md`) & Interactive Question Cards** | Next.js / React 19 / Prisma | [Ficha Técnica](file:///e:/autoprod/docs/features/channel_and_video_orchestration/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/channel_and_video_orchestration/idea.md) |
 | **FEAT-17** | **Instalador Oficial Standalone (`AutoProd-Setup.exe` / `.dmg`)** | Inno Setup / PyInstaller / GitHub Releases | [Ficha Técnica](file:///e:/autoprod/docs/features/standalone_installer/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/standalone_installer/idea.md) |
 | **FEAT-18** | **VideoProjects, Normalización de BD, Caché & Cuentas Vinculadas** | Next.js / Supabase / Prisma | [Ficha Técnica](file:///e:/autoprod/docs/features/video_projects/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/video_projects/idea.md) |
+| **FEAT-19** | **Router Semántico Jerárquico, Dominios & Telemetría Flywheel** | Next.js / pgvector / AI SDK / Prisma | [Ficha Técnica](file:///e:/autoprod/docs/features/semantic_router_and_telemetry/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/semantic_router_and_telemetry/idea.md) |
 
 ---
 

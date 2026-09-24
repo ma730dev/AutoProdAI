@@ -126,7 +126,7 @@ export const TextToSpeechStudio: React.FC<TextToSpeechStudioProps> = ({
       const blob = await ControladorClient.previewTTS({
         provider: selectedProvider,
         voice: voice.id,
-        text: voice.sample_text,
+        text: voice.sample_text || 'Hola, esta es una prueba de voz.',
         rate: speechRate,
       });
 
@@ -190,7 +190,7 @@ export const TextToSpeechStudio: React.FC<TextToSpeechStudioProps> = ({
   const estimatedSeconds = Math.round((wordsCount / 130) * 60);
   const estimatedTimeFormatted = `${Math.floor(estimatedSeconds / 60)}m ${estimatedSeconds % 60}s`;
 
-  const currentVoices = voicesData?.providers[selectedProvider]?.voices || [];
+  const currentVoices: TTSVoice[] = (voicesData?.providers as any)?.[selectedProvider]?.voices || [];
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#121214] text-white overflow-hidden">
@@ -385,7 +385,7 @@ export const TextToSpeechStudio: React.FC<TextToSpeechStudioProps> = ({
               </div>
 
               <div className="space-y-2 max-h-[260px] overflow-y-auto custom-scrollbar pr-1">
-                {currentVoices.map((v) => {
+                {currentVoices.map((v: TTSVoice) => {
                   const isSelected = selectedVoice === v.id;
                   const isPlaying = previewingVoiceId === v.id;
 
@@ -451,7 +451,7 @@ export const TextToSpeechStudio: React.FC<TextToSpeechStudioProps> = ({
                     <span>✅</span> Locución Lista
                   </span>
                   <span className="text-[10px] font-mono text-zinc-400">
-                    {generatedResult.duration_seconds} seg • {(generatedResult.file_size_bytes / 1024).toFixed(0)} KB
+                    {generatedResult.duration_seconds || 0} seg • {(((generatedResult.file_size_bytes || 0)) / 1024).toFixed(0)} KB
                   </span>
                 </div>
 
@@ -460,7 +460,7 @@ export const TextToSpeechStudio: React.FC<TextToSpeechStudioProps> = ({
                   ref={generatedAudioRef}
                   controls
                   className="w-full h-8"
-                  src={`http://127.0.0.1:8000/workspace/file?path=${encodeURIComponent(generatedResult.file_path)}`}
+                  src={generatedResult.file_path ? `http://127.0.0.1:8000/workspace/file?path=${encodeURIComponent(generatedResult.file_path)}` : ''}
                 />
 
                 <div className="flex items-center justify-between gap-2 pt-1">

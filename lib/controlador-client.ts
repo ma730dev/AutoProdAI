@@ -6,6 +6,52 @@ export function getControladorUrl() {
   return 'http://127.0.0.1:8000';
 };
 
+export interface TTSVoice {
+  id: string;
+  name: string;
+  provider: 'edge_tts' | 'openai';
+  gender?: string;
+  locale?: string;
+  description?: string;
+  sample_text?: string;
+  lang?: string;
+  style?: string;
+}
+
+export interface TTSVoicesResponse {
+  providers?: {
+    edge_tts: TTSVoice[];
+    openai: TTSVoice[];
+  };
+  edge_tts?: TTSVoice[];
+  openai?: TTSVoice[];
+}
+
+export interface TTSGenerateParams {
+  provider: 'edge_tts' | 'openai';
+  voice: string;
+  text: string;
+  targetPath?: string | null;
+  channelName?: string | null;
+  videoTitle?: string | null;
+  apiKey?: string | null;
+  rate?: string;
+  filename?: string | null;
+}
+
+export interface TTSGenerateResponse {
+  success: boolean;
+  outputPath?: string;
+  durationSeconds?: number;
+  duration_seconds?: number;
+  file_size_bytes?: number;
+  file_path?: string;
+  file_name?: string;
+  provider?: string;
+  voice?: string;
+  error?: string;
+}
+
 export class ControladorClient {
   /**
    * Verifica si el controlador local está corriendo y accesible.

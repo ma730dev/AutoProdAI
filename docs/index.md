@@ -56,6 +56,7 @@ Esta carpeta contiene el detalle de las mecánicas centrales y el seguimiento de
 - 🎬 **Orquestación de Canales & Interactive Question Cards (FEAT-16):** [Ficha Técnica](file:///e:/autoprod/docs/features/channel_and_video_orchestration/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/channel_and_video_orchestration/idea.md)
 - 📦 **Instalador Oficial Standalone (FEAT-17):** [Ficha Técnica](file:///e:/autoprod/docs/features/standalone_installer/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/standalone_installer/idea.md)
 - 🎥 **VideoProjects, Hub & Cuentas Vinculadas (FEAT-18):** [Ficha Técnica](file:///e:/autoprod/docs/features/video_projects/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/video_projects/idea.md)
+- 🧠 **Router Semántico Jerárquico & Telemetría Flywheel (FEAT-19):** [Ficha Técnica](file:///e:/autoprod/docs/features/semantic_router_and_telemetry/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/semantic_router_and_telemetry/idea.md)
 - 🎵 **Generador de Música IA & Soundscapes (IDEA):** [Ficha Técnica](file:///e:/autoprod/docs/features/music_generator/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/music_generator/idea.md)
 - 📹 **AI Video Studio & B-Roll Auto-Finder (IDEA):** [Ficha Técnica](file:///e:/autoprod/docs/features/ai_video_and_broll/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/ai_video_and_broll/idea.md)
 

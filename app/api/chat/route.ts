@@ -11,6 +11,7 @@ import { checkChatRateLimit, attachRateLimitHeaders } from '@/lib/rate-limit';
 import { getWorkspacePath } from '@/harness/setup/detector';
 import path from 'path';
 import fs from 'fs';
+import { evaluateSemanticRoute, logIntentTelemetry, getToolsForDomain, SemanticRouteMatch } from '@/lib/semantic-router';
 
 // ──────────────────────────────────────────────
 // Tool executor — calls the Python Motor API
@@ -245,6 +246,12 @@ export async function POST(req: Request) {
     // ──────────────────────────────────────────────
     // 1. Cargar Orquestador y Herramientas (Agentic Pattern)
     // ──────────────────────────────────────────────
+    const lastUserMessage = [...messages].reverse().find((m: any) => m.role === 'user');
+    const userQueryText = typeof lastUserMessage?.content === 'string' 
+      ? lastUserMessage.content 
+      : (Array.isArray(lastUserMessage?.content) ? JSON.stringify(lastUserMessage.content) : '');
+    let semanticMatch: SemanticRouteMatch = { matched: false };
+
     let baseSystemPrompt = 'Eres AutoProd, un asistente inteligente.';
     if (userRecord?.name) {
       baseSystemPrompt = `Estás hablando con ${userRecord.name}. Dirígete a él/ella por su nombre.\n\n` + baseSystemPrompt;
@@ -408,6 +415,186 @@ export async function POST(req: Request) {
         // 3. Si el usuario tiene exactamente 1 canal registrado, asumirlo por defecto
         if (!activeChannel && allUserChannels.length === 1) {
           activeChannel = allUserChannels[0];
+        }
+
+        // ──────────────────────────────────────────────
+        // 🚀 EVALUACIÓN DEL ROUTER SEMÁNTICO (SYSTEM 1)
+        // ──────────────────────────────────────────────
+        const embeddingKey = (provider === 'openai' || provider === 'chatgpt') ? apiKey : (process.env.OPENAI_API_KEY || apiKey);
+
+        if (userQueryText && userQueryText.trim().length >= 3 && embeddingKey) {
+          try {
+            semanticMatch = await evaluateSemanticRoute({
+              queryText: userQueryText,
+              openAiApiKey: embeddingKey,
+              supabaseClient: supabase,
+              defaultThreshold: 0.85
+            });
+          } catch (routerErr: any) {
+            console.warn('[SemanticRouter] Error en evaluación previa:', routerErr.message);
+          }
+        }
+
+        // ⚡ FAST-PATH: Despacho determinista de ultra-baja latencia sin LLM (< 150ms)
+        if (semanticMatch.matched && semanticMatch.isDirectFastPath) {
+          // 1. Listar canales
+          if (semanticMatch.toolName === 'listar_canales') {
+            const channelListStr = existingChannels.length > 0
+              ? existingChannels.map(c => `• 📁 **${c}**`).join('\n')
+              : 'Actualmente no tienes canales creados en tu workspace.';
+            const fastText = `He consultado tu workspace en tiempo real:\n\n${channelListStr}\n\n¿Deseas seleccionar alguno para comenzar a producir un video o planificar guiones?`;
+
+            logIntentTelemetry({
+              userId,
+              rawQuery: userQueryText,
+              detectedDomain: semanticMatch.domain,
+              executedTool: 'listar_canales',
+              wasFastPath: true,
+              confidenceScore: semanticMatch.confidence,
+              success: true
+            });
+
+            return NextResponse.json({
+              text: fastText,
+              modelName: 'FastPath (Semantic Router)',
+              workspaceModified: false,
+              executedTools: ['listar_canales'],
+              isFastPath: true,
+              isDeepThinking: false,
+              newBalance: null,
+              channelId: activeChannel?.id,
+              channelName: activeChannel?.name,
+              detectedDomain: semanticMatch.domain,
+              routerConfidence: semanticMatch.confidence
+            });
+          }
+
+          // 2. Consultar proyecto de video activo
+          if (semanticMatch.toolName === 'consultar_proyecto_video' && userId) {
+            try {
+              const activeProject = await prisma.videoProject.findFirst({
+                where: { userId, status: { not: 'COMPLETED' } },
+                orderBy: { updatedAt: 'desc' },
+                include: { channel: true }
+              });
+
+              let fastText = '';
+              if (activeProject) {
+                fastText = `Actualmente estás trabajando en el proyecto de video **"${activeProject.title}"**${activeProject.channel ? ` para el canal **${activeProject.channel.name}**` : ''} (Resolución: ${activeProject.resolution}, Formato: ${activeProject.aspectRatio}, Estado: ${activeProject.status}).\n\n¿Deseas continuar editando su timeline, preparar sus recursos o redactar su guion?`;
+              } else {
+                fastText = `No tienes ningún proyecto de video en curso en este momento.${activeChannel ? ` ¿Te gustaría iniciar un nuevo video para el canal **${activeChannel.name}**?` : ' ¿Para cuál de tus canales te gustaría crear un proyecto de video?'}`;
+              }
+
+              logIntentTelemetry({
+                userId,
+                rawQuery: userQueryText,
+                detectedDomain: semanticMatch.domain,
+                executedTool: 'consultar_proyecto_video',
+                wasFastPath: true,
+                confidenceScore: semanticMatch.confidence,
+                success: true
+              });
+
+              return NextResponse.json({
+                text: fastText,
+                modelName: 'FastPath (Semantic Router)',
+                workspaceModified: false,
+                executedTools: ['consultar_proyecto_video'],
+                isFastPath: true,
+                isDeepThinking: false,
+                newBalance: null,
+                channelId: activeChannel?.id,
+                channelName: activeChannel?.name,
+                detectedDomain: semanticMatch.domain,
+                routerConfidence: semanticMatch.confidence
+              });
+            } catch (pErr: any) {
+              console.warn('[FastPath] Error al consultar videoProject:', pErr.message);
+            }
+          }
+
+          // 3. Listar proyectos de video
+          if (semanticMatch.toolName === 'listar_proyectos_video' && userId) {
+            try {
+              const projects = await prisma.videoProject.findMany({
+                where: { userId },
+                orderBy: { updatedAt: 'desc' },
+                take: 5,
+                include: { channel: true }
+              });
+
+              let fastText = '';
+              if (projects.length > 0) {
+                const listStr = projects.map(p => `• 🎬 **${p.title}** (${p.status}) - Canal: ${p.channel?.name || 'Sin canal'} [${p.resolution}]`).join('\n');
+                fastText = `Tus proyectos de video más recientes:\n\n${listStr}\n\n¿Deseas abrir o continuar alguno de ellos?`;
+              } else {
+                fastText = `Aún no tienes proyectos de video registrados en AutoProd.${activeChannel ? ` ¿Deseas crear uno para el canal **${activeChannel.name}**?` : ''}`;
+              }
+
+              logIntentTelemetry({
+                userId,
+                rawQuery: userQueryText,
+                detectedDomain: semanticMatch.domain,
+                executedTool: 'listar_proyectos_video',
+                wasFastPath: true,
+                confidenceScore: semanticMatch.confidence,
+                success: true
+              });
+
+              return NextResponse.json({
+                text: fastText,
+                modelName: 'FastPath (Semantic Router)',
+                workspaceModified: false,
+                executedTools: ['listar_proyectos_video'],
+                isFastPath: true,
+                isDeepThinking: false,
+                newBalance: null,
+                channelId: activeChannel?.id,
+                channelName: activeChannel?.name,
+                detectedDomain: semanticMatch.domain,
+                routerConfidence: semanticMatch.confidence
+              });
+            } catch (pErr: any) {
+              console.warn('[FastPath] Error al listar videoProjects:', pErr.message);
+            }
+          }
+
+          // 4. Estado del sistema
+          if (semanticMatch.toolName === 'estado_sistema') {
+            let motorOnline = false;
+            try {
+              const checkRes = await fetch('http://127.0.0.1:8000/status', { signal: AbortSignal.timeout(1500) });
+              motorOnline = checkRes.ok;
+            } catch {
+              motorOnline = false;
+            }
+
+            const fastText = `Diagnóstico del sistema AutoProd:\n\n• **Motor Local (FastAPI):** ${motorOnline ? '🟢 Online (puerto 8000)' : '🔴 Desconectado (inicia el motor para renderizar y usar TTS)'}\n• **Workspace:** \`${currentWorkspacePath}\`\n• **Canales detectados:** ${existingChannels.length} canal(es)\n• **Router Semántico (System 1):** ⚡ Activo (< 50ms)\n\n¿En qué podemos trabajar hoy?`;
+
+            logIntentTelemetry({
+              userId,
+              rawQuery: userQueryText,
+              detectedDomain: semanticMatch.domain,
+              executedTool: 'estado_sistema',
+              wasFastPath: true,
+              confidenceScore: semanticMatch.confidence,
+              success: true
+            });
+
+            return NextResponse.json({
+              text: fastText,
+              modelName: 'FastPath (Semantic Router)',
+              workspaceModified: false,
+              executedTools: ['estado_sistema'],
+              isFastPath: true,
+              isDeepThinking: false,
+              newBalance: null,
+              channelId: activeChannel?.id,
+              channelName: activeChannel?.name,
+              detectedDomain: semanticMatch.domain,
+              routerConfidence: semanticMatch.confidence
+            });
+          }
         }
 
         // ──────────────────────────────────────────────
@@ -1009,11 +1196,28 @@ DIRECTIVA ESTRATÉGICA PARA PENSAMIENTO PROFUNDO:
     // ──────────────────────────────────────────────
     // 3. Generar Texto (Function Calling Nativo)
     // ──────────────────────────────────────────────
+    // Filtrado inteligente por dominios (Domain Tool Retrieval)
+    let effectiveAiTools = aiTools;
+    if (semanticMatch.matched && semanticMatch.domain) {
+      const allowedTools = getToolsForDomain(semanticMatch.domain);
+      if (allowedTools.length > 0) {
+        const filtered: Record<string, any> = {};
+        for (const toolName of allowedTools) {
+          if (aiTools[toolName]) {
+            filtered[toolName] = aiTools[toolName];
+          }
+        }
+        if (Object.keys(filtered).length > 0) {
+          effectiveAiTools = filtered;
+        }
+      }
+    }
+
     const result: any = await generateText({
       model: aiModel,
       messages: history.filter((h: any) => h.role !== 'system'),
       system: systemPrompt,
-      tools: Object.keys(aiTools).length > 0 ? aiTools : undefined,
+      tools: Object.keys(effectiveAiTools).length > 0 ? effectiveAiTools : undefined,
       maxSteps: 5 // Permite al LLM iterar, llamar herramientas y luego responder
     } as any);
 
@@ -1116,6 +1320,18 @@ DIRECTIVA ESTRATÉGICA PARA PENSAMIENTO PROFUNDO:
       return !isReadOnly;
     });
 
+    // ── TELEMETRÍA EN CALIENTE (DATA FLYWHEEL ASÍNCRONO) ──
+    logIntentTelemetry({
+      userId,
+      rawQuery: userQueryText,
+      detectedDomain: semanticMatch.domain || null,
+      executedTool: executedTools[0] || (semanticMatch.matched ? semanticMatch.toolName : null) || null,
+      wasFastPath: false,
+      confidenceScore: semanticMatch.confidence || null,
+      success: true,
+      metadata: { model: cleanModel || model }
+    });
+
     return NextResponse.json({ 
       text: finalOutput, 
       modelName: cleanModel || model,
@@ -1124,7 +1340,9 @@ DIRECTIVA ESTRATÉGICA PARA PENSAMIENTO PROFUNDO:
       isDeepThinking,
       newBalance: updatedBalance,
       channelId: activeChannel?.id,
-      channelName: activeChannel?.name
+      channelName: activeChannel?.name,
+      detectedDomain: semanticMatch.domain || null,
+      routerConfidence: semanticMatch.confidence || null,
     });
   } catch (error: any) {
     console.error('Chat API Error:', error);

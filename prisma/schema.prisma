@@ -27,6 +27,7 @@ model User {
   paymentLedgers   PaymentLedger[]
   assets           Asset[]
   videoProjects    VideoProject[]
+  intentTelemetries IntentTelemetry[]
 
   @@map("user")
   @@schema("public")
@@ -357,6 +358,48 @@ model AgentTool {
 
   @@unique([agentId, toolId])
   @@map("agentTool")
+  @@schema("public")
+}
+
+model ToolIntentGolden {
+  id                  String                       @id @default(uuid()) @db.Uuid
+  toolName            String
+  domain              String                       @default("SYSTEM")
+  canonicalQuery      String
+  embedding           Unsupported("vector(1536)")?
+  isDirectFastPath    Boolean                      @default(true)
+  confidenceThreshold Float                        @default(0.85)
+  metadata            Json?                        @default("{}")
+  createdAt           DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime                     @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@unique([toolName, canonicalQuery], map: "uq_tool_intent_golden_canonical")
+  @@index([domain], map: "idx_tool_intent_golden_domain")
+  @@index([toolName], map: "idx_tool_intent_golden_tool_name")
+  @@index([isDirectFastPath], map: "idx_tool_intent_golden_fast_path")
+  @@map("toolIntentGolden")
+  @@schema("public")
+}
+
+model IntentTelemetry {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String?  @db.Uuid
+  rawQuery        String   @db.Text
+  detectedDomain  String?
+  executedTool    String?
+  wasFastPath     Boolean  @default(false)
+  confidenceScore Float?
+  success         Boolean  @default(true)
+  status          String   @default("PENDING")
+  metadata        Json?    @default("{}")
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status], map: "idx_intent_telemetry_status")
+  @@index([userId], map: "idx_intent_telemetry_user_id")
+  @@index([executedTool], map: "idx_intent_telemetry_executed_tool")
+  @@index([createdAt], map: "idx_intent_telemetry_created_at")
+  @@map("intentTelemetry")
   @@schema("public")
 }
 

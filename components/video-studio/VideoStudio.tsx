@@ -149,9 +149,8 @@ export default function VideoStudio({
   const [activeMediaTab, setActiveMediaTab] = useState<'clips' | 'audio' | 'text' | 'subtitles'>(initialMediaTab || 'clips');
   const [dismissedSyncBar, setDismissedSyncBar] = useState<boolean>(false);
 
-  // ── ESTADOS DEL ÁRBOL EN INSPECTOR DE ELEMENTOS (-Video -> ------Looper) ──
-  const [isVideoTreeOpen, setIsVideoTreeOpen] = useState<boolean>(true);
-  const [isLooperTreeOpen, setIsLooperTreeOpen] = useState<boolean>(true);
+  // ── PESTAÑA ACTIVA EN INSPECTOR DERECHO ──
+  const [activeInspectorTab, setActiveInspectorTab] = useState<'clip' | 'looper' | 'audio' | 'overlay'>('clip');
 
   useEffect(() => {
     if (initialMediaTab) {
@@ -195,6 +194,25 @@ export default function VideoStudio({
   const selectedOverlay = overlays.find(o => o.id === selectedOverlayId);
   const selectedAudioCut = audioCuts.find(a => a.id === selectedAudioCutId);
 
+  // Sincronización contextual de pestañas según selección
+  useEffect(() => {
+    if (selectedCutId) {
+      setActiveInspectorTab('clip');
+    }
+  }, [selectedCutId]);
+
+  useEffect(() => {
+    if (selectedAudioCutId) {
+      setActiveInspectorTab('audio');
+    }
+  }, [selectedAudioCutId]);
+
+  useEffect(() => {
+    if (selectedOverlayId) {
+      setActiveInspectorTab('overlay');
+    }
+  }, [selectedOverlayId]);
+
   // ── PLAYHEAD Y RELOJ MAESTRO DE REPRODUCCIÓN ──
   const [playheadTime, setPlayheadTime] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -208,6 +226,8 @@ export default function VideoStudio({
   // ── CARPETA DESTINO Y EXPORTACIÓN ──
   const [availableFolders, setAvailableFolders] = useState<FolderOption[]>([]);
   const [targetFolder, setTargetFolder] = useState<string>('');
+  const [exportDestinationMode, setExportDestinationMode] = useState<'existing' | 'new'>('new');
+  const [newFolderName, setNewFolderName] = useState<string>('');
   const [outputFilename, setOutputFilename] = useState<string>('render_final.mp4');
   const [resolution, setResolution] = useState<string>('1080p');
   const [quality, setQuality] = useState<string>('high'); // 'master' | 'high' | 'balanced'
@@ -1355,6 +1375,28 @@ export default function VideoStudio({
     setRenderMessage(lang === 'es' ? 'Inicializando composición multipista en GPU local...' : 'Initializing GPU composition...');
 
     try {
+      let effectiveTargetFolder = targetFolder;
+
+      // Si el usuario eligió crear una nueva carpeta para este video
+      if (exportDestinationMode === 'new' && newFolderName.trim()) {
+        const sanitized = newFolderName.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_');
+        const parentPath = activeProject?.channel?.name && workspacePath
+          ? `${workspacePath}/${activeProject.channel.name}`
+          : (workspacePath || '');
+
+        if (parentPath && exportEngine === 'local') {
+          try {
+            await ControladorClient.createFolder(parentPath, sanitized, ['Guiones', 'Videos', 'Miniatura', 'Musica', 'Ambiente']);
+            effectiveTargetFolder = `${parentPath}/${sanitized}/Videos`.replace(/\//g, '\\');
+            setTargetFolder(effectiveTargetFolder);
+          } catch (e) {
+            console.warn('Could not auto-create video folder:', e);
+            effectiveTargetFolder = `${parentPath}/${sanitized}`.replace(/\//g, '\\');
+            setTargetFolder(effectiveTargetFolder);
+          }
+        }
+      }
+
       // Si hay subtítulos en la pista S1, guardarlos como .srt para quemarlos en el render
       let subtitlePathToBurn: string | null = null;
       if (subtitles.length > 0) {
@@ -1364,7 +1406,7 @@ export default function VideoStudio({
           const savedSrt = await ControladorClient.saveBinaryFile({
             base64Data: `data:text/plain;base64,${b64}`,
             fileName: `subtitles_${Date.now()}.srt`,
-            targetPath: targetFolder || undefined,
+            targetPath: effectiveTargetFolder || undefined,
             subfolder: 'Videos',
           });
           if (savedSrt && savedSrt.path) {
@@ -1445,7 +1487,7 @@ export default function VideoStudio({
         resolution,
         quality,
         aspectRatio: currentPreset.ratio,
-        outputFolderPath: targetFolder || null,
+        outputFolderPath: effectiveTargetFolder || null,
         outputFilename,
         isPreview,
       });
@@ -1746,69 +1788,100 @@ export default function VideoStudio({
     toast.info(lang === 'es' ? 'Bucle desactivado (clip restaurado a duración normal)' : 'Loop removed');
   };
 
-  // ── RENDERIZADOR DEL INSPECTOR DE VIDEO Y LOOPER (-Video -> ------Looper) ──
-  const renderVideoInspector = () => {
+  // ── RENDERIZADOR DEL INSPECTOR DERECHO CON PESTAÑAS (Clip | Looper | Audio | Capas) ──
+  const renderRightInspector = () => {
     return (
       <div className="flex flex-col gap-3">
-        {/* ENCABEZADO SUPERIOR DEL INSPECTOR */}
-        <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
-          <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-            <span>🎛️</span>
-            <span>{lang === 'es' ? 'Inspector de Elementos' : 'Element Inspector'}</span>
-          </span>
-          {selectedCut && (
-            <button
-              type="button"
-              onClick={() => {
-                setTimelineCuts(prev => prev.filter(c => c.id !== selectedCut.id));
-                setSelectedCutId(null);
-                toast.info(lang === 'es' ? 'Clip eliminado de la línea de tiempo' : 'Clip removed from timeline');
-              }}
-              className="text-[10px] text-red-400 hover:text-red-300 font-bold cursor-pointer"
-            >
-              ✕ {lang === 'es' ? 'Eliminar del Timeline' : 'Remove from Timeline'}
-            </button>
-          )}
-        </div>
-
-        {/* ── ARBOL JERARQUICO: NODO RAIZ - Video ───────────────────────── */}
-        <div className="border border-zinc-800/80 rounded-xl bg-zinc-950/40 overflow-hidden flex flex-col">
-          {/* Fila del Nodo Padre: - Video */}
+        {/* TABS DE SELECCIÓN DEL INSPECTOR */}
+        <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800/80 shrink-0">
           <button
             type="button"
-            onClick={() => setIsVideoTreeOpen(prev => !prev)}
-            className="w-full px-3 py-2 bg-zinc-900/90 hover:bg-zinc-850 flex items-center justify-between text-xs font-bold text-purple-300 cursor-pointer border-b border-zinc-800/60 transition-colors"
+            onClick={() => setActiveInspectorTab('clip')}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              activeInspectorTab === 'clip'
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
+            }`}
           >
-            <div className="flex items-center gap-2">
-              <span className="text-[10px]">{isVideoTreeOpen ? '▼' : '▶'}</span>
-              <span>🎬</span>
-              <span>- Video</span>
-            </div>
-            {selectedCut ? (
-              <span className="text-[10px] text-zinc-400 font-mono font-normal truncate max-w-[130px]">
-                {selectedCut.name}
-              </span>
-            ) : (
-              <span className="text-[10px] text-zinc-500 font-normal">
-                {lang === 'es' ? 'Sin clip en timeline' : 'No timeline cut'}
-              </span>
-            )}
+            <span>🎬</span>
+            <span className="truncate">Clip</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveInspectorTab('looper')}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              activeInspectorTab === 'looper'
+                ? 'bg-amber-600 text-black shadow-sm font-extrabold'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
+            }`}
+          >
+            <span>🔁</span>
+            <span className="truncate">Looper</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveInspectorTab('audio')}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              activeInspectorTab === 'audio'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
+            }`}
+          >
+            <span>🎵</span>
+            <span className="truncate">Audio</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveInspectorTab('overlay')}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              activeInspectorTab === 'overlay'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
+            }`}
+          >
+            <span>🏷️</span>
+            <span className="truncate">Capas</span>
+          </button>
+        </div>
 
-          {/* Contenido de - Video (si está expandido) */}
-          {isVideoTreeOpen && (
-            <div className="p-2.5 flex flex-col gap-2.5 bg-zinc-950/30">
-              {/* Si hay un clip seleccionado en el timeline: controles de recorte, encuadre, etc. */}
-              {selectedCut ? (
-                <>
-                  <div className="flex flex-col gap-1 text-xs">
-                    <span className="text-[10px] text-zinc-500 uppercase font-bold">{lang === 'es' ? 'Clip Seleccionado' : 'Selected Clip'}</span>
-                    <span className="font-semibold text-zinc-200 truncate">{selectedCut.name}</span>
+        {/* ── TAB 1: CLIP DE VIDEO ── */}
+        {activeInspectorTab === 'clip' && (
+          <div className="flex flex-col gap-3">
+            {selectedCut ? (
+              <>
+                {/* Cabecera del Clip Seleccionado */}
+                <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="text-xs">🎬</span>
+                    <span className="text-xs font-bold text-purple-300 truncate max-w-[130px]" title={selectedCut.name}>
+                      {selectedCut.name}
+                    </span>
+                    <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                      ({selectedCut.duration.toFixed(1)}s)
+                    </span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTimelineCuts(prev => prev.filter(c => c.id !== selectedCut.id));
+                      setSelectedCutId(null);
+                      toast.info(lang === 'es' ? 'Clip eliminado de la línea de tiempo' : 'Clip removed from timeline');
+                    }}
+                    className="text-[10px] text-red-400 hover:text-red-300 font-bold cursor-pointer shrink-0"
+                  >
+                    ✕ {lang === 'es' ? 'Eliminar' : 'Remove'}
+                  </button>
+                </div>
 
+                {/* 1. Recorte In / Out Points */}
+                <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+                  <span className="text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1">
+                    <span>✂️</span>
+                    <span>{lang === 'es' ? 'Recorte de Clip' : 'Clip Trim'}</span>
+                  </span>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-[10px] text-zinc-500 uppercase font-bold block">In-Point (s)</span>
+                      <span className="text-[10px] text-zinc-500 uppercase font-bold block mb-0.5">In-Point (s)</span>
                       <input
                         type="number"
                         step="0.1"
@@ -1822,11 +1895,11 @@ export default function VideoStudio({
                             duration: Math.max(0.3, c.endTime - val)
                           } : c));
                         }}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 font-mono text-xs"
+                        className="w-full bg-zinc-900 border border-zinc-700/80 rounded px-2 py-1 text-zinc-200 font-mono text-xs focus:border-purple-500"
                       />
                     </div>
                     <div>
-                      <span className="text-[10px] text-zinc-500 uppercase font-bold block">Out-Point (s)</span>
+                      <span className="text-[10px] text-zinc-500 uppercase font-bold block mb-0.5">Out-Point (s)</span>
                       <input
                         type="number"
                         step="0.1"
@@ -1840,601 +1913,983 @@ export default function VideoStudio({
                             duration: Math.max(0.3, val - c.startTime)
                           } : c));
                         }}
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 font-mono text-xs"
+                        className="w-full bg-zinc-900 border border-zinc-700/80 rounded px-2 py-1 text-zinc-200 font-mono text-xs focus:border-purple-500"
                       />
                     </div>
                   </div>
+                  <div className="flex justify-between items-center text-[10px] text-zinc-400 pt-0.5">
+                    <span>{lang === 'es' ? 'Duración resultante:' : 'Resulting duration:'}</span>
+                    <span className="font-mono text-purple-300 font-bold">{(selectedCut.endTime - selectedCut.startTime).toFixed(2)}s</span>
+                  </div>
+                </div>
 
-                  {/* Reordenar Clip en la Secuencia (Mover Video) */}
-                  <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-1.5">
-                    <span className="text-[10px] text-zinc-500 uppercase font-bold">{lang === 'es' ? 'Mover Clip en Secuencia' : 'Move in Sequence'}</span>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleMoveCutOrder(selectedCut.id, 'left')}
-                        disabled={timelineCuts.findIndex(c => c.id === selectedCut.id) === 0}
-                        className="py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-850 disabled:opacity-30 disabled:pointer-events-none text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                        title="Mover clip hacia la izquierda (antes)"
-                      >
-                        <span>◀ {lang === 'es' ? 'Mover Antes' : 'Move Before'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMoveCutOrder(selectedCut.id, 'right')}
-                        disabled={timelineCuts.findIndex(c => c.id === selectedCut.id) === timelineCuts.length - 1}
-                        className="py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-850 disabled:opacity-30 disabled:pointer-events-none text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                        title="Mover clip hacia la derecha (después)"
-                      >
-                        <span>{lang === 'es' ? 'Mover Después' : 'Move After'} ▶</span>
-                      </button>
-                    </div>
+                {/* 2. Reordenar Clip en la Secuencia & Duplicar */}
+                <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+                  <span className="text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1">
+                    <span>⇄</span>
+                    <span>{lang === 'es' ? 'Secuencia & Orden' : 'Sequence & Order'}</span>
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
-                      onClick={() => handleDuplicateCut(selectedCut.id)}
-                      className="w-full py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1.5 cursor-pointer mt-0.5 transition-colors"
+                      onClick={() => handleMoveCutOrder(selectedCut.id, 'left')}
+                      disabled={timelineCuts.findIndex(c => c.id === selectedCut.id) === 0}
+                      className="py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-850 disabled:opacity-30 disabled:pointer-events-none text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      title="Mover clip hacia la izquierda (antes)"
                     >
-                      <span>📋</span>
-                      <span>{lang === 'es' ? 'Duplicar este Clip' : 'Duplicate Clip'}</span>
+                      <span>◀ {lang === 'es' ? 'Mover Antes' : 'Move Before'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveCutOrder(selectedCut.id, 'right')}
+                      disabled={timelineCuts.findIndex(c => c.id === selectedCut.id) === timelineCuts.length - 1}
+                      className="py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-850 disabled:opacity-30 disabled:pointer-events-none text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      title="Mover clip hacia la derecha (después)"
+                    >
+                      <span>{lang === 'es' ? 'Mover Después' : 'Move After'} ▶</span>
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDuplicateCut(selectedCut.id)}
+                    className="w-full py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-300 text-xs font-semibold border border-zinc-800 flex items-center justify-center gap-1.5 cursor-pointer mt-0.5 transition-colors"
+                  >
+                    <span>📋</span>
+                    <span>{lang === 'es' ? 'Duplicar este Clip' : 'Duplicate Clip'}</span>
+                  </button>
+                </div>
 
-                  {/* 📐 Encuadre & Posición del Video (Pan & Zoom) */}
-                  <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-purple-300 uppercase font-bold flex items-center gap-1">
-                        <span>📐</span>
-                        <span>{lang === 'es' ? 'Encuadre & Paneo (Canvas)' : 'Framing & Pan'}</span>
-                      </span>
-                      {(selectedCut.panX || selectedCut.panY || (selectedCut.zoom && selectedCut.zoom !== 1)) && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panX: 0, panY: 0, zoom: 1 } : c));
-                            toast.success(lang === 'es' ? 'Encuadre centrado' : 'Centered');
-                          }}
-                          className="text-[10px] text-purple-400 hover:text-purple-300 cursor-pointer"
-                        >
-                          {lang === 'es' ? 'Centrar 🎯' : 'Center 🎯'}
-                        </button>
-                      )}
+                {/* 3. Encuadre & Posición del Video (Pan & Zoom) */}
+                <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-purple-300 uppercase font-bold flex items-center gap-1">
+                      <span>📐</span>
+                      <span>{lang === 'es' ? 'Encuadre & Paneo (Canvas)' : 'Framing & Pan'}</span>
+                    </span>
+                    {(selectedCut.panX || selectedCut.panY || (selectedCut.zoom && selectedCut.zoom !== 1)) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panX: 0, panY: 0, zoom: 1 } : c));
+                          toast.success(lang === 'es' ? 'Encuadre centrado' : 'Centered');
+                        }}
+                        className="text-[10px] text-purple-400 hover:text-purple-300 cursor-pointer font-semibold"
+                      >
+                        {lang === 'es' ? 'Centrar 🎯' : 'Center 🎯'}
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
+                      <span>{lang === 'es' ? 'Zoom / Escala' : 'Zoom / Scale'}</span>
+                      <span className="font-mono text-purple-300 font-bold">{Math.round((selectedCut.zoom || 1) * 100)}%</span>
                     </div>
+                    <input
+                      type="range"
+                      min="1"
+                      max="2.5"
+                      step="0.05"
+                      value={selectedCut.zoom || 1}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 1;
+                        setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, zoom: val } : c));
+                      }}
+                      className="w-full accent-purple-500 cursor-pointer"
+                    />
+                  </div>
 
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
-                        <span>{lang === 'es' ? 'Zoom / Escala' : 'Zoom / Scale'}</span>
-                        <span className="font-mono text-purple-300 font-bold">{Math.round((selectedCut.zoom || 1) * 100)}%</span>
-                      </div>
+                      <span className="text-[10px] text-zinc-400 block mb-0.5">Pan X: {selectedCut.panX || 0}%</span>
                       <input
                         type="range"
-                        min="1"
-                        max="2.5"
-                        step="0.05"
-                        value={selectedCut.zoom || 1}
+                        min="-50"
+                        max="50"
+                        value={selectedCut.panX || 0}
                         onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 1;
-                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, zoom: val } : c));
+                          const val = parseInt(e.target.value) || 0;
+                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panX: val } : c));
                         }}
                         className="w-full accent-purple-500 cursor-pointer"
                       />
                     </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="text-[10px] text-zinc-400 block mb-0.5">Pan X: {selectedCut.panX || 0}%</span>
-                        <input
-                          type="range"
-                          min="-50"
-                          max="50"
-                          value={selectedCut.panX || 0}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value) || 0;
-                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panX: val } : c));
-                          }}
-                          className="w-full accent-purple-500 cursor-pointer"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-zinc-400 block mb-0.5">Pan Y: {selectedCut.panY || 0}%</span>
-                        <input
-                          type="range"
-                          min="-50"
-                          max="50"
-                          value={selectedCut.panY || 0}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value) || 0;
-                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panY: val } : c));
-                          }}
-                          className="w-full accent-purple-500 cursor-pointer"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Toggle de Invertir Video (Reverse) */}
-                  <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-1.5">
-                    <label className="flex items-center justify-between text-xs cursor-pointer select-none">
-                      <span className="font-bold text-cyan-200 flex items-center gap-1.5">
-                        <span>⏪</span>
-                        <span>{lang === 'es' ? 'Invertir Video (Reverse)' : 'Reverse Video'}</span>
-                      </span>
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block mb-0.5">Pan Y: {selectedCut.panY || 0}%</span>
                       <input
-                        type="checkbox"
-                        checked={!!selectedCut.isReversed}
+                        type="range"
+                        min="-50"
+                        max="50"
+                        value={selectedCut.panY || 0}
                         onChange={(e) => {
-                          const checked = e.target.checked;
-                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
-                            ...c,
-                            isReversed: checked
-                          } : c));
-                          toast.success(checked ? (lang === 'es' ? 'Clip invertido' : 'Clip reversed') : (lang === 'es' ? 'Reproducción normal' : 'Normal playback'));
+                          const val = parseInt(e.target.value) || 0;
+                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, panY: val } : c));
                         }}
-                        className="rounded accent-cyan-500 cursor-pointer"
+                        className="w-full accent-purple-500 cursor-pointer"
                       />
-                    </label>
+                    </div>
                   </div>
-                </>
-              ) : (
-                <div className="p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800/70 text-zinc-400 text-[11px] leading-relaxed">
-                  🎬 {lang === 'es'
-                    ? 'No hay clip individual seleccionado en la línea de tiempo. Puedes seleccionar videos del proyecto abajo en el Looper para armar un bucle.'
-                    : 'No clip selected in timeline. You can pick project videos below in the Looper to build a loop.'}
                 </div>
-              )}
 
-              {/* ── SUB-NODO JERARQUICO: ------ Looper ───────────────────────── */}
-              <div className="mt-1 pt-2 border-t border-zinc-800/80 flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsLooperTreeOpen(prev => !prev)}
-                  className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
-                    isLooperTreeOpen
-                      ? 'bg-amber-950/60 text-amber-200 border border-amber-500/60 shadow-sm'
-                      : 'bg-zinc-900 text-zinc-300 hover:text-white border border-zinc-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px]">{isLooperTreeOpen ? '▼' : '▶'}</span>
-                    <span>🔁</span>
-                    <span className="font-mono tracking-wide">------ Looper</span>
-                  </div>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">
-                    {selectedLoopClips.length} {selectedLoopClips.length === 1 ? 'video' : 'videos'}
+                {/* 4. Invertir Video (Reverse) */}
+                <div className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 flex items-center justify-between">
+                  <span className="text-xs font-bold text-cyan-200 flex items-center gap-1.5">
+                    <span>⏪</span>
+                    <span>{lang === 'es' ? 'Invertir Video (Reverse)' : 'Reverse Video'}</span>
                   </span>
-                </button>
-
-                {/* Contenido desplegable del sub-nodo Looper */}
-                {isLooperTreeOpen && (
-                  <div className="ml-1 pl-2 border-l-2 border-amber-500/40 flex flex-col gap-2.5 pt-1">
-
-                    {/* 1. SELECCIONAR VIDEOS DEL PROYECTO */}
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-bold text-amber-300 flex items-center gap-1">
-                          <span>🎬</span>
-                          <span>{lang === 'es' ? 'Videos del Proyecto' : 'Project Videos'}</span>
-                        </span>
+                  <input
+                    type="checkbox"
+                    checked={!!selectedCut.isReversed}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
+                        ...c,
+                        isReversed: checked
+                      } : c));
+                      toast.success(checked ? (lang === 'es' ? 'Clip invertido' : 'Clip reversed') : (lang === 'es' ? 'Reproducción normal' : 'Normal playback'));
+                    }}
+                    className="rounded accent-cyan-500 cursor-pointer w-4 h-4"
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-6 text-center gap-3 border border-dashed border-zinc-800/80 rounded-2xl bg-zinc-950/40">
+                <span className="text-3xl">🎬</span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-zinc-200">
+                    {lang === 'es' ? 'Ningún clip seleccionado' : 'No clip selected'}
+                  </span>
+                  <p className="text-[11px] text-zinc-400 max-w-[220px]">
+                    {lang === 'es'
+                      ? 'Haz clic en un clip de la pista de video para editar su recorte, encuadre o posición.'
+                      : 'Click on a video cut in the timeline to edit framing, trimming, or position.'}
+                  </p>
+                </div>
+                {timelineCuts.length > 0 && (
+                  <div className="w-full flex flex-col gap-1.5 pt-2 border-t border-zinc-850">
+                    <span className="text-[10px] uppercase font-bold text-zinc-500 text-left">
+                      {lang === 'es' ? 'Clips en la secuencia:' : 'Sequence clips:'}
+                    </span>
+                    <div className="flex flex-col gap-1 max-h-40 overflow-y-auto minimal-scrollbar">
+                      {timelineCuts.map((cut, idx) => (
                         <button
+                          key={cut.id}
                           type="button"
-                          onClick={() => setIsLoopClipsSelectorOpen(prev => !prev)}
-                          className="text-[10px] text-amber-400 hover:text-amber-200 font-semibold cursor-pointer flex items-center gap-1"
+                          onClick={() => setSelectedCutId(cut.id)}
+                          className="w-full p-2 rounded-lg bg-zinc-900/80 hover:bg-purple-950/40 border border-zinc-800 hover:border-purple-700/60 text-left flex items-center justify-between text-xs cursor-pointer transition-colors"
                         >
-                          <span>{isLoopClipsSelectorOpen ? 'Ocultar' : 'Elegir videos'}</span>
-                          <span>{isLoopClipsSelectorOpen ? '▲' : '▼'}</span>
-                        </button>
-                      </div>
-
-                      {/* Selector de clips disponibles en el proyecto (no requiere estar en timeline) */}
-                      {isLoopClipsSelectorOpen && (
-                        <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-zinc-950/80 border border-zinc-800/80 max-h-48 overflow-y-auto minimal-scrollbar">
-                          {projectClips.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center p-3 text-center gap-2 text-zinc-500 text-xs">
-                              <span>{lang === 'es' ? 'No hay videos en la bandeja del proyecto.' : 'No videos in project bin.'}</span>
-                              <button
-                                type="button"
-                                onClick={() => fileInputRef.current?.click()}
-                                className="px-2.5 py-1 rounded bg-purple-900/60 hover:bg-purple-800 text-purple-200 text-[10px] font-bold border border-purple-700 cursor-pointer"
-                              >
-                                + {lang === 'es' ? 'Importar Video (PC)' : 'Import Video (PC)'}
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex items-center justify-between pb-1 border-b border-zinc-850 text-[10px] text-zinc-400">
-                                <span>{lang === 'es' ? 'Selecciona los que formarán el ciclo:' : 'Select cycle clips:'}</span>
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedLoopClipPaths(projectClips.map(c => c.path))}
-                                    className="text-amber-400 hover:underline cursor-pointer"
-                                  >
-                                    {lang === 'es' ? 'Todos' : 'All'}
-                                  </button>
-                                  <span>•</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedLoopClipPaths(projectClips[0] ? [projectClips[0].path] : [])}
-                                    className="text-zinc-500 hover:text-zinc-300 cursor-pointer"
-                                  >
-                                    {lang === 'es' ? 'Reiniciar' : 'Reset'}
-                                  </button>
-                                </div>
-                              </div>
-                              {projectClips.map((clip) => {
-                                const isChecked = selectedLoopClipPaths.length > 0
-                                  ? selectedLoopClipPaths.includes(clip.path)
-                                  : (selectedCut?.clipPath === clip.path);
-                                return (
-                                  <label
-                                    key={clip.path}
-                                    className={`flex items-center justify-between p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
-                                      isChecked
-                                        ? 'bg-amber-950/40 border-amber-600/50 text-amber-100'
-                                        : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-300 hover:bg-zinc-900'
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2 truncate pr-1">
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={() => handleToggleLoopClipSelection(clip.path)}
-                                        className="rounded accent-amber-500 cursor-pointer"
-                                      />
-                                      <span className="truncate text-[11px] font-medium">{clip.name}</span>
-                                    </div>
-                                    <span className="text-[10px] font-mono text-zinc-500 shrink-0">
-                                      {clip.durationFormatted || `${Math.round(clip.duration || 15)}s`}
-                                    </span>
-                                  </label>
-                                );
-                              })}
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {/* 2. ORDEN DE LA SECUENCIA DEL BUCLE (CICLO REPETITIVO) */}
-                      {selectedLoopClips.length > 0 && (
-                        <div className="flex flex-col gap-1 pt-1">
-                          <span className="text-[10px] uppercase font-bold text-zinc-500">
-                            {lang === 'es' ? 'Orden del Ciclo:' : 'Cycle Order:'}
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="text-[10px] text-zinc-500 font-mono">{idx + 1}.</span>
+                            <span className="truncate text-zinc-200">{cut.name}</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-purple-300 shrink-0">
+                            {cut.duration.toFixed(1)}s
                           </span>
-                          <div className="flex flex-col gap-1 max-h-36 overflow-y-auto minimal-scrollbar">
-                            {selectedLoopClips.map((clip, idx) => (
-                              <div
-                                key={`${clip.path}-${idx}`}
-                                className="flex items-center justify-between p-1.5 rounded-lg bg-zinc-900/80 border border-zinc-800 text-xs"
-                              >
-                                <div className="flex items-center gap-1.5 truncate">
-                                  <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono flex items-center justify-center shrink-0">
-                                    {idx + 1}
-                                  </span>
-                                  <span className="truncate text-zinc-200 text-[11px]">{clip.name}</span>
-                                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">
-                                    ({clip.duration ? `${clip.duration.toFixed(0)}s` : '15s'})
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMoveLoopClipOrder(idx, 'up')}
-                                    disabled={idx === 0}
-                                    className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-20 text-zinc-300 text-[10px] cursor-pointer"
-                                    title="Mover antes en el ciclo"
-                                  >
-                                    ▲
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMoveLoopClipOrder(idx, 'down')}
-                                    disabled={idx === selectedLoopClips.length - 1}
-                                    className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-20 text-zinc-300 text-[10px] cursor-pointer"
-                                    title="Mover después en el ciclo"
-                                  >
-                                    ▼
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveLoopClipFromSequence(idx)}
-                                    disabled={selectedLoopClips.length <= 1}
-                                    className="p-1 rounded bg-red-950/40 hover:bg-red-900/60 disabled:opacity-20 text-red-300 text-[10px] cursor-pointer"
-                                    title="Quitar del ciclo"
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="flex items-center justify-between text-[10px] font-mono text-amber-300/90 bg-amber-950/40 px-2 py-1 rounded border border-amber-600/30">
-                            <span>{lang === 'es' ? '1 Ciclo Completo (Vuelta):' : '1 Complete Cycle:'}</span>
-                            <span className="font-bold text-amber-200">{loopCycleDuration.toFixed(1)}s</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 3. DURACIÓN DEL BUCLE (LAS 2 OPCIONES + ALARGAR/ACORTAR) */}
-                    <div className="pt-2 border-t border-amber-800/40 flex flex-col gap-2">
-                      <div className="flex items-center justify-between text-[10px] uppercase font-bold text-amber-300">
-                        <span>{lang === 'es' ? 'Duración del Bucle' : 'Loop Duration'}</span>
-                        <span className="text-zinc-500 font-normal">2 {lang === 'es' ? 'Opciones' : 'Options'}</span>
-                      </div>
-
-                      {/* Selector de modo: Poner Tiempo vs Elegir Canciones */}
-                      <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => setLooperDurationMode('time')}
-                          className={`py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                            looperDurationMode === 'time'
-                              ? 'bg-amber-600 text-black font-bold shadow'
-                              : 'text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          <span>⏱️</span>
-                          <span>{lang === 'es' ? 'Poner Tiempo' : 'Set Time'}</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setLooperDurationMode('songs')}
-                          className={`py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                            looperDurationMode === 'songs'
-                              ? 'bg-amber-600 text-black font-bold shadow'
-                              : 'text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          <span>🎵</span>
-                          <span>{lang === 'es' ? 'Elegir Canciones' : 'Pick Songs'}</span>
-                        </button>
-                      </div>
-
-                      {/* OPCION A: PONER TIEMPO DIRECTO */}
-                      {looperDurationMode === 'time' && (
-                        <div className="flex flex-col gap-2 p-2 rounded-xl bg-zinc-950/60 border border-zinc-800">
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div>
-                              <span className="text-[10px] text-zinc-400 block mb-0.5">{lang === 'es' ? 'Minutos:' : 'Minutes:'}</span>
-                              <input
-                                type="number"
-                                min="0"
-                                max="600"
-                                value={looperCustomMinutes}
-                                onChange={(e) => {
-                                  const m = Math.max(0, parseInt(e.target.value) || 0);
-                                  setLooperCustomMinutes(m);
-                                  const targetTotal = m * 60 + looperCustomSeconds;
-                                  if (selectedCut && selectedCut.loopToAudio) {
-                                    setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, loopDuration: targetTotal } : c));
-                                  }
-                                }}
-                                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-amber-300 font-mono text-xs font-bold"
-                              />
-                            </div>
-                            <div>
-                              <span className="text-[10px] text-zinc-400 block mb-0.5">{lang === 'es' ? 'Segundos:' : 'Seconds:'}</span>
-                              <input
-                                type="number"
-                                min="0"
-                                max="59"
-                                value={looperCustomSeconds}
-                                onChange={(e) => {
-                                  const s = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
-                                  setLooperCustomSeconds(s);
-                                  const targetTotal = looperCustomMinutes * 60 + s;
-                                  if (selectedCut && selectedCut.loopToAudio) {
-                                    setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, loopDuration: targetTotal } : c));
-                                  }
-                                }}
-                                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-amber-300 font-mono text-xs font-bold"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Presets rápidos */}
-                          <div className="flex items-center gap-1">
-                            {[5, 15, 30, 60].map(mins => (
-                              <button
-                                key={mins}
-                                type="button"
-                                onClick={() => {
-                                  setLooperCustomMinutes(mins);
-                                  setLooperCustomSeconds(0);
-                                  if (selectedCut && selectedCut.loopToAudio) {
-                                    setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, loopDuration: mins * 60 } : c));
-                                  }
-                                }}
-                                className={`flex-1 py-1 rounded text-[10px] font-mono font-semibold border cursor-pointer transition-all ${
-                                  looperCustomMinutes === mins && looperCustomSeconds === 0
-                                    ? 'bg-amber-500 text-black border-amber-400 font-bold'
-                                    : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
-                                }`}
-                              >
-                                {mins}m
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* OPCION B: ELEGIR CANCIONES */}
-                      {looperDurationMode === 'songs' && (
-                        <div className="flex flex-col gap-2 p-2 rounded-xl bg-zinc-950/60 border border-zinc-800 text-xs">
-                          {/* Sub-selector de canciones */}
-                          <div className="flex flex-col gap-1.5">
-                            <label className="flex items-center gap-2 cursor-pointer text-[11px] text-zinc-300">
-                              <input
-                                type="radio"
-                                name="song_mode"
-                                checked={looperSongSelectionMode === 'track_a1'}
-                                onChange={() => setLooperSongSelectionMode('track_a1')}
-                                className="accent-amber-500"
-                              />
-                              <span>
-                                {lang === 'es' ? 'Sincronizar con Audio de Pista A1' : 'Match Track A1 Audio'}
-                                {maxAudioEnd > 0 && <span className="text-amber-300 font-mono ml-1">({maxAudioEnd.toFixed(1)}s)</span>}
-                              </span>
-                            </label>
-
-                            <label className="flex items-center gap-2 cursor-pointer text-[11px] text-zinc-300">
-                              <input
-                                type="radio"
-                                name="song_mode"
-                                checked={looperSongSelectionMode === 'choose_songs'}
-                                onChange={() => setLooperSongSelectionMode('choose_songs')}
-                                className="accent-amber-500"
-                              />
-                              <span>{lang === 'es' ? 'Elegir canciones del proyecto' : 'Choose project songs'}</span>
-                            </label>
-                          </div>
-
-                          {/* Lista de canciones del proyecto */}
-                          {looperSongSelectionMode === 'choose_songs' && (
-                            <div className="flex flex-col gap-1 pt-1 max-h-36 overflow-y-auto minimal-scrollbar">
-                              {projectAudioList.length === 0 ? (
-                                <div className="p-2 text-center text-[10px] text-zinc-500">
-                                  {lang === 'es' ? 'No hay canciones en la carpeta Música' : 'No songs in Music folder'}
-                                </div>
-                              ) : (
-                                projectAudioList.map(song => {
-                                  const isSongSelected = looperSelectedSongPaths.includes(song.path);
-                                  return (
-                                    <label
-                                      key={song.path}
-                                      className={`flex items-center justify-between p-1.5 rounded-lg border text-xs cursor-pointer ${
-                                        isSongSelected
-                                          ? 'bg-amber-950/40 border-amber-600/50 text-amber-100'
-                                          : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:bg-zinc-900'
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-1.5 truncate">
-                                        <input
-                                          type="checkbox"
-                                          checked={isSongSelected}
-                                          onChange={() => {
-                                            setLooperSelectedSongPaths(prev =>
-                                              prev.includes(song.path)
-                                                ? prev.filter(p => p !== song.path)
-                                                : [...prev, song.path]
-                                            );
-                                          }}
-                                          className="rounded accent-amber-500 cursor-pointer"
-                                        />
-                                        <span className="truncate text-[11px]">{song.name}</span>
-                                      </div>
-                                      <span className="text-[10px] font-mono text-zinc-500 shrink-0">
-                                        {song.duration_formatted || `${song.duration_seconds}s`}
-                                      </span>
-                                    </label>
-                                  );
-                                })
-                              )}
-
-                              <label className="flex items-center gap-1.5 text-[10px] text-zinc-400 cursor-pointer pt-1">
-                                <input
-                                  type="checkbox"
-                                  checked={looperAddSongsToTimeline}
-                                  onChange={(e) => setLooperAddSongsToTimeline(e.target.checked)}
-                                  className="rounded accent-amber-500"
-                                />
-                                <span>{lang === 'es' ? 'Insertar canciones seleccionadas en pista A1' : 'Insert selected songs into Track A1'}</span>
-                              </label>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* ALARGAR O ACORTAR EL BUCLE LIBREMENTE (EN AMBAS OPCIONES) */}
-                      <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-amber-950/30 border border-amber-500/40">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-amber-200/90 font-medium">
-                            {lang === 'es' ? 'Alargar / Acortar Bucle:' : 'Stretch / Shorten Loop:'}
-                          </span>
-                          <span className="font-mono font-bold text-amber-300">
-                            {Math.floor(calculatedLoopDuration / 60)}m {Math.round(calculatedLoopDuration % 60)}s
-                          </span>
-                        </div>
-
-                        {/* Botones de ajuste rápido (Alargar / Acortar) */}
-                        <div className="grid grid-cols-4 gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleAdjustLoopDurationSeconds(-60)}
-                            className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
-                            title="Acortar 1 minuto"
-                          >
-                            - 1m
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleAdjustLoopDurationSeconds(-10)}
-                            className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
-                            title="Acortar 10 segundos"
-                          >
-                            - 10s
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleAdjustLoopDurationSeconds(10)}
-                            className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
-                            title="Alargar 10 segundos"
-                          >
-                            + 10s
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleAdjustLoopDurationSeconds(60)}
-                            className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
-                            title="Alargar 1 minuto"
-                          >
-                            + 1m
-                          </button>
-                        </div>
-
-                        {/* Métrica de vueltas y recordatorio elástico */}
-                        <div className="flex items-center justify-between text-[10px] font-mono text-amber-300/90 bg-amber-950/60 px-2 py-1 rounded border border-amber-600/30">
-                          <span>{lang === 'es' ? 'Vueltas estimadas:' : 'Estimated cycles:'}</span>
-                          <span className="font-bold text-amber-200">↻ {calculatedLoopCycles} vueltas</span>
-                        </div>
-                        <span className="text-[9px] text-amber-300/70 leading-tight">
-                          💡 {lang === 'es'
-                            ? 'También puedes alargar o acortar el bucle amarillo en el timeline arrastrando el tirador derecho (🔁).'
-                            : 'You can also stretch or shorten the yellow block directly on the timeline dragging the right handle (🔁).'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 4. BOTON DE ACCION: CREAR / ACTUALIZAR BUCLE */}
-                    <div className="flex flex-col gap-1.5 pt-1">
-                      <button
-                        type="button"
-                        onClick={handleCreateOrApplyLoop}
-                        className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-[0.98]"
-                      >
-                        <span>⚡</span>
-                        <span>
-                          {selectedCut?.loopToAudio
-                            ? (lang === 'es' ? 'Actualizar Bucle Amarillo en Timeline' : 'Update Yellow Loop on Timeline')
-                            : (lang === 'es' ? 'Crear Bucle Amarillo en Timeline' : 'Create Yellow Loop on Timeline')}
-                        </span>
-                      </button>
-
-                      {selectedCut?.loopToAudio && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveLoopFromCut(selectedCut.id)}
-                          className="w-full py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-red-300 text-[10px] font-semibold border border-zinc-800 cursor-pointer transition-colors"
-                        >
-                          ✕ {lang === 'es' ? 'Desactivar Bucle (Restaurar a clip normal)' : 'Remove Loop (Restore to normal clip)'}
-                        </button>
-                      )}
+                      ))}
                     </div>
                   </div>
                 )}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 2: LOOPER (GENERADOR DE BUCLES) ── */}
+        {activeInspectorTab === 'looper' && (
+          <div className="flex flex-col gap-3">
+            {/* Encabezado del Looper */}
+            <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs">🔁</span>
+                <span className="text-xs font-bold text-amber-300">
+                  {lang === 'es' ? 'Generador de Bucles' : 'Loop Generator'}
+                </span>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono font-bold border border-amber-500/40">
+                {selectedLoopClips.length} {selectedLoopClips.length === 1 ? 'clip' : 'clips'}
+              </span>
             </div>
-          )}
-        </div>
+
+            {/* 1. SELECCIONAR VIDEOS DEL PROYECTO */}
+            <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-amber-300 flex items-center gap-1">
+                  <span>🎬</span>
+                  <span>{lang === 'es' ? 'Videos del Ciclo' : 'Cycle Videos'}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsLoopClipsSelectorOpen(prev => !prev)}
+                  className="text-[10px] text-amber-400 hover:text-amber-200 font-semibold cursor-pointer flex items-center gap-1"
+                >
+                  <span>{isLoopClipsSelectorOpen ? 'Ocultar' : 'Elegir videos'}</span>
+                  <span>{isLoopClipsSelectorOpen ? '▲' : '▼'}</span>
+                </button>
+              </div>
+
+              {isLoopClipsSelectorOpen && (
+                <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-zinc-950 border border-zinc-800 max-h-48 overflow-y-auto minimal-scrollbar">
+                  {projectClips.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center p-3 text-center gap-2 text-zinc-500 text-xs">
+                      <span>{lang === 'es' ? 'No hay videos en la bandeja del proyecto.' : 'No videos in project bin.'}</span>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-2.5 py-1 rounded bg-purple-900/60 hover:bg-purple-800 text-purple-200 text-[10px] font-bold border border-purple-700 cursor-pointer"
+                      >
+                        + {lang === 'es' ? 'Importar Video (PC)' : 'Import Video (PC)'}
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between pb-1 border-b border-zinc-850 text-[10px] text-zinc-400">
+                        <span>{lang === 'es' ? 'Selecciona los que formarán el ciclo:' : 'Select cycle clips:'}</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedLoopClipPaths(projectClips.map(c => c.path))}
+                            className="text-amber-400 hover:underline cursor-pointer"
+                          >
+                            {lang === 'es' ? 'Todos' : 'All'}
+                          </button>
+                          <span>•</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedLoopClipPaths(projectClips[0] ? [projectClips[0].path] : [])}
+                            className="text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                          >
+                            {lang === 'es' ? 'Reiniciar' : 'Reset'}
+                          </button>
+                        </div>
+                      </div>
+                      {projectClips.map((clip) => {
+                        const isChecked = selectedLoopClipPaths.length > 0
+                          ? selectedLoopClipPaths.includes(clip.path)
+                          : (selectedCut?.clipPath === clip.path);
+                        return (
+                          <label
+                            key={clip.path}
+                            className={`flex items-center justify-between p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                              isChecked
+                                ? 'bg-amber-950/40 border-amber-600/50 text-amber-100'
+                                : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-300 hover:bg-zinc-900'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate pr-1">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleToggleLoopClipSelection(clip.path)}
+                                className="rounded accent-amber-500 cursor-pointer"
+                              />
+                              <span className="truncate text-[11px] font-medium">{clip.name}</span>
+                            </div>
+                            <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                              {clip.durationFormatted || `${Math.round(clip.duration || 15)}s`}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ORDEN DE LA SECUENCIA DEL BUCLE (CICLO REPETITIVO) */}
+              {selectedLoopClips.length > 0 && (
+                <div className="flex flex-col gap-1 pt-1">
+                  <span className="text-[10px] uppercase font-bold text-zinc-500">
+                    {lang === 'es' ? 'Orden del Ciclo:' : 'Cycle Order:'}
+                  </span>
+                  <div className="flex flex-col gap-1 max-h-36 overflow-y-auto minimal-scrollbar">
+                    {selectedLoopClips.map((clip, idx) => (
+                      <div
+                        key={`${clip.path}-${idx}`}
+                        className="flex items-center justify-between p-1.5 rounded-lg bg-zinc-900/80 border border-zinc-800 text-xs"
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span className="truncate text-zinc-200 text-[11px]">{clip.name}</span>
+                          <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                            ({clip.duration ? `${clip.duration.toFixed(0)}s` : '15s'})
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleMoveLoopClipOrder(idx, 'up')}
+                            disabled={idx === 0}
+                            className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-20 text-zinc-300 text-[10px] cursor-pointer"
+                            title="Mover antes en el ciclo"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveLoopClipOrder(idx, 'down')}
+                            disabled={idx === selectedLoopClips.length - 1}
+                            className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-20 text-zinc-300 text-[10px] cursor-pointer"
+                            title="Mover después en el ciclo"
+                          >
+                            ▼
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveLoopClipFromSequence(idx)}
+                            disabled={selectedLoopClips.length <= 1}
+                            className="p-1 rounded bg-red-950/40 hover:bg-red-900/60 disabled:opacity-20 text-red-300 text-[10px] cursor-pointer"
+                            title="Quitar del ciclo"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] font-mono text-amber-300/90 bg-amber-950/40 px-2 py-1 rounded border border-amber-600/30">
+                    <span>{lang === 'es' ? '1 Ciclo Completo (Vuelta):' : '1 Complete Cycle:'}</span>
+                    <span className="font-bold text-amber-200">{loopCycleDuration.toFixed(1)}s</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 2. DURACIÓN DEL BUCLE */}
+            <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+              <div className="flex items-center justify-between text-[10px] uppercase font-bold text-amber-300">
+                <span>{lang === 'es' ? 'Duración del Bucle' : 'Loop Duration'}</span>
+                <span className="text-zinc-500 font-normal">2 {lang === 'es' ? 'Opciones' : 'Options'}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setLooperDurationMode('time')}
+                  className={`py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                    looperDurationMode === 'time'
+                      ? 'bg-amber-600 text-black font-bold shadow'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  <span>⏱️</span>
+                  <span>{lang === 'es' ? 'Poner Tiempo' : 'Set Time'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLooperDurationMode('songs')}
+                  className={`py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                    looperDurationMode === 'songs'
+                      ? 'bg-amber-600 text-black font-bold shadow'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  <span>🎵</span>
+                  <span>{lang === 'es' ? 'Elegir Canciones' : 'Pick Songs'}</span>
+                </button>
+              </div>
+
+              {/* OPCION A: TIEMPO DIRECTO */}
+              {looperDurationMode === 'time' && (
+                <div className="flex flex-col gap-2 p-2 rounded-xl bg-zinc-900/60 border border-zinc-800">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block mb-0.5">{lang === 'es' ? 'Minutos:' : 'Minutes:'}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="600"
+                        value={looperCustomMinutes}
+                        onChange={(e) => {
+                          const m = Math.max(0, parseInt(e.target.value) || 0);
+                          setLooperCustomMinutes(m);
+                          const targetTotal = m * 60 + looperCustomSeconds;
+                          if (selectedCut && selectedCut.loopToAudio) {
+                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, loopDuration: targetTotal } : c));
+                          }
+                        }}
+                        className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-amber-300 font-mono text-xs font-bold"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block mb-0.5">{lang === 'es' ? 'Segundos:' : 'Seconds:'}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={looperCustomSeconds}
+                        onChange={(e) => {
+                          const s = Math.max(0, Math.min(59, parseInt(e.target.value) || 0));
+                          setLooperCustomSeconds(s);
+                          const targetTotal = looperCustomMinutes * 60 + s;
+                          if (selectedCut && selectedCut.loopToAudio) {
+                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, loopDuration: targetTotal } : c));
+                          }
+                        }}
+                        className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-amber-300 font-mono text-xs font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    {[5, 15, 30, 60].map(mins => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => {
+                          setLooperCustomMinutes(mins);
+                          setLooperCustomSeconds(0);
+                          if (selectedCut && selectedCut.loopToAudio) {
+                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, loopDuration: mins * 60 } : c));
+                          }
+                        }}
+                        className={`flex-1 py-1 rounded text-[10px] font-mono font-semibold border cursor-pointer transition-all ${
+                          looperCustomMinutes === mins && looperCustomSeconds === 0
+                            ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                            : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+                        }`}
+                      >
+                        {mins}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* OPCION B: CANCIONES */}
+              {looperDurationMode === 'songs' && (
+                <div className="flex flex-col gap-2 p-2 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="flex items-center gap-2 cursor-pointer text-[11px] text-zinc-300">
+                      <input
+                        type="radio"
+                        name="song_mode"
+                        checked={looperSongSelectionMode === 'track_a1'}
+                        onChange={() => setLooperSongSelectionMode('track_a1')}
+                        className="accent-amber-500"
+                      />
+                      <span>
+                        {lang === 'es' ? 'Sincronizar con Audio de Pista A1' : 'Match Track A1 Audio'}
+                        {maxAudioEnd > 0 && <span className="text-amber-300 font-mono ml-1">({maxAudioEnd.toFixed(1)}s)</span>}
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer text-[11px] text-zinc-300">
+                      <input
+                        type="radio"
+                        name="song_mode"
+                        checked={looperSongSelectionMode === 'choose_songs'}
+                        onChange={() => setLooperSongSelectionMode('choose_songs')}
+                        className="accent-amber-500"
+                      />
+                      <span>{lang === 'es' ? 'Elegir canciones del proyecto' : 'Choose project songs'}</span>
+                    </label>
+                  </div>
+
+                  {looperSongSelectionMode === 'choose_songs' && (
+                    <div className="flex flex-col gap-1 pt-1 max-h-36 overflow-y-auto minimal-scrollbar">
+                      {projectAudioList.length === 0 ? (
+                        <div className="p-2 text-center text-[10px] text-zinc-500">
+                          {lang === 'es' ? 'No hay canciones en la carpeta Música' : 'No songs in Music folder'}
+                        </div>
+                      ) : (
+                        projectAudioList.map(song => {
+                          const isSongSelected = looperSelectedSongPaths.includes(song.path);
+                          return (
+                            <label
+                              key={song.path}
+                              className={`flex items-center justify-between p-1.5 rounded-lg border text-xs cursor-pointer ${
+                                isSongSelected
+                                  ? 'bg-amber-950/40 border-amber-600/50 text-amber-100'
+                                  : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:bg-zinc-900'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 truncate">
+                                <input
+                                  type="checkbox"
+                                  checked={isSongSelected}
+                                  onChange={() => {
+                                    setLooperSelectedSongPaths(prev =>
+                                      prev.includes(song.path)
+                                        ? prev.filter(p => p !== song.path)
+                                        : [...prev, song.path]
+                                    );
+                                  }}
+                                  className="rounded accent-amber-500 cursor-pointer"
+                                />
+                                <span className="truncate text-[11px]">{song.name}</span>
+                              </div>
+                              <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                                {song.duration_formatted || `${song.duration_seconds}s`}
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+
+                      <label className="flex items-center gap-1.5 text-[10px] text-zinc-400 cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={looperAddSongsToTimeline}
+                          onChange={(e) => setLooperAddSongsToTimeline(e.target.checked)}
+                          className="rounded accent-amber-500"
+                        />
+                        <span>{lang === 'es' ? 'Insertar canciones seleccionadas en pista A1' : 'Insert selected songs into Track A1'}</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ALARGAR O ACORTAR EL BUCLE */}
+              <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-amber-950/30 border border-amber-500/40">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-amber-200/90 font-medium">
+                    {lang === 'es' ? 'Alargar / Acortar Bucle:' : 'Stretch / Shorten Loop:'}
+                  </span>
+                  <span className="font-mono font-bold text-amber-300">
+                    {Math.floor(calculatedLoopDuration / 60)}m {Math.round(calculatedLoopDuration % 60)}s
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustLoopDurationSeconds(-60)}
+                    className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
+                    title="Acortar 1 minuto"
+                  >
+                    - 1m
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustLoopDurationSeconds(-10)}
+                    className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
+                    title="Acortar 10 segundos"
+                  >
+                    - 10s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustLoopDurationSeconds(10)}
+                    className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
+                    title="Alargar 10 segundos"
+                  >
+                    + 10s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustLoopDurationSeconds(60)}
+                    className="py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[10px] font-mono border border-zinc-700 cursor-pointer text-center"
+                    title="Alargar 1 minuto"
+                  >
+                    + 1m
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] font-mono text-amber-300/90 bg-amber-950/60 px-2 py-1 rounded border border-amber-600/30">
+                  <span>{lang === 'es' ? 'Vueltas estimadas:' : 'Estimated cycles:'}</span>
+                  <span className="font-bold text-amber-200">↻ {calculatedLoopCycles} vueltas</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. BOTÓN DE ACCIÓN */}
+            <div className="flex flex-col gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={handleCreateOrApplyLoop}
+                className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-[0.98]"
+              >
+                <span>⚡</span>
+                <span>
+                  {selectedCut?.loopToAudio
+                    ? (lang === 'es' ? 'Actualizar Bucle Amarillo en Timeline' : 'Update Yellow Loop on Timeline')
+                    : (lang === 'es' ? 'Crear Bucle Amarillo en Timeline' : 'Create Yellow Loop on Timeline')}
+                </span>
+              </button>
+
+              {selectedCut?.loopToAudio && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveLoopFromCut(selectedCut.id)}
+                  className="w-full py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-red-300 text-[10px] font-semibold border border-zinc-800 cursor-pointer transition-colors"
+                >
+                  ✕ {lang === 'es' ? 'Desactivar Bucle (Restaurar a clip normal)' : 'Remove Loop (Restore to normal clip)'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB 3: AUDIO & MÚSICA ── */}
+        {activeInspectorTab === 'audio' && (
+          <div className="flex flex-col gap-3">
+            {/* Encabezado del Audio */}
+            <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs">🎵</span>
+                <span className="text-xs font-bold text-indigo-300">
+                  {lang === 'es' ? 'Inspector de Audio & Música' : 'Audio & Music Inspector'}
+                </span>
+              </div>
+              {selectedAudioCut && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAudioCuts(prev => prev.filter(a => a.id !== selectedAudioCut.id));
+                    setSelectedAudioCutId(null);
+                  }}
+                  className="text-[10px] text-red-400 hover:text-red-300 font-bold cursor-pointer"
+                >
+                  ✕ {lang === 'es' ? 'Quitar de pista' : 'Remove track'}
+                </button>
+              )}
+            </div>
+
+            {/* 1. CONTROLES MAESTROS GLOBALES */}
+            <div className="flex flex-col gap-2.5 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 text-xs">
+              <span className="text-[10px] text-indigo-300 uppercase font-bold flex items-center gap-1">
+                <span>🎚️</span>
+                <span>{lang === 'es' ? 'Mezcla General del Video' : 'Master Audio Mix'}</span>
+              </span>
+
+              <label className="flex items-center justify-between text-xs cursor-pointer select-none">
+                <span className="text-zinc-300 font-medium flex items-center gap-1.5">
+                  <span>🔇</span>
+                  <span>{lang === 'es' ? 'Silenciar audio de videos' : 'Mute original clip audio'}</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={muteOriginalAudio}
+                  onChange={() => setMuteOriginalAudio(!muteOriginalAudio)}
+                  className="rounded accent-indigo-500 cursor-pointer w-4 h-4"
+                />
+              </label>
+
+              <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-zinc-400 font-bold">{lang === 'es' ? 'Volumen Música de Fondo' : 'Music Volume'}</span>
+                  <span className="text-[10px] font-mono text-indigo-300 font-bold">
+                    {Math.round(musicVolume * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1.5"
+                  step="0.05"
+                  value={musicVolume}
+                  onChange={(e) => setMusicVolume(parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* 2. PISTA DE AUDIO INDIVIDUAL (TRACK A1) */}
+            {selectedAudioCut ? (
+              <div className="flex flex-col gap-2.5 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 text-xs">
+                <span className="text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1">
+                  <span>🎼</span>
+                  <span>{lang === 'es' ? 'Pista Seleccionada (A1)' : 'Selected Track (A1)'}</span>
+                </span>
+
+                <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 font-semibold truncate text-[11px]" title={selectedAudioCut.name}>
+                  {selectedAudioCut.name}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-zinc-400">{lang === 'es' ? 'Volumen individual:' : 'Track volume:'}</span>
+                    <span className="text-[10px] font-mono text-indigo-300 font-bold">
+                      {Math.round((selectedAudioCut.volume ?? 1) * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1.5"
+                    step="0.05"
+                    value={selectedAudioCut.volume ?? 1}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setAudioCuts(prev => prev.map(a => a.id === selectedAudioCut.id ? { ...a, volume: val } : a));
+                    }}
+                    className="w-full accent-indigo-500 cursor-pointer"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const duplicated: TimelineAudioCut = {
+                      ...selectedAudioCut,
+                      id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                      startTime: Number((selectedAudioCut.startTime + selectedAudioCut.duration).toFixed(1)),
+                    };
+                    setAudioCuts(prev => [...prev, duplicated]);
+                    setSelectedAudioCutId(duplicated.id);
+                    toast.success(lang === 'es' ? 'Pista de audio duplicada' : 'Audio track duplicated');
+                  }}
+                  className="w-full py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 text-zinc-200 border border-zinc-700 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <span>📋</span>
+                  <span>{lang === 'es' ? 'Duplicar Pista de Audio' : 'Duplicate Audio Track'}</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-zinc-950/40 border border-dashed border-zinc-800 text-xs">
+                <span className="text-[10px] uppercase font-bold text-zinc-500">
+                  {lang === 'es' ? 'Pistas en Línea de Tiempo (A1):' : 'Timeline Audio Tracks:'}
+                </span>
+                {audioCuts.length === 0 ? (
+                  <p className="text-[11px] text-zinc-500 text-center py-2">
+                    {lang === 'es'
+                      ? 'No hay pistas añadidas en la línea de tiempo. Ve a la pestaña Audio a la izquierda para insertar música.'
+                      : 'No audio cuts on timeline.'}
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-1 max-h-36 overflow-y-auto minimal-scrollbar">
+                    {audioCuts.map((cut, idx) => (
+                      <button
+                        key={cut.id}
+                        type="button"
+                        onClick={() => setSelectedAudioCutId(cut.id)}
+                        className="w-full p-2 rounded-lg bg-zinc-900/80 hover:bg-indigo-950/40 border border-zinc-800 hover:border-indigo-700/60 text-left flex items-center justify-between text-xs cursor-pointer transition-colors"
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-[10px] text-zinc-500 font-mono">{idx + 1}.</span>
+                          <span className="truncate text-zinc-200">{cut.name}</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-indigo-300 shrink-0">
+                          {cut.duration.toFixed(1)}s
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 4: CAPAS DE TEXTO Y OVERLAYS ── */}
+        {activeInspectorTab === 'overlay' && (
+          <div className="flex flex-col gap-3">
+            {/* Encabezado de Capas */}
+            <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs">🏷️</span>
+                <span className="text-xs font-bold text-blue-300">
+                  {lang === 'es' ? 'Inspector de Capas & Texto' : 'Overlay & Text Inspector'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleInsertOverlay('lower_third')}
+                className="text-[10px] px-2 py-0.5 rounded-lg bg-blue-900/60 hover:bg-blue-800 text-blue-200 font-bold border border-blue-700 cursor-pointer transition-colors"
+              >
+                + {lang === 'es' ? 'Nueva Etiqueta' : 'New Overlay'}
+              </button>
+            </div>
+
+            {selectedOverlay ? (
+              <div className="flex flex-col gap-3">
+                {/* Cabecera del Overlay Seleccionado */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-zinc-400 uppercase font-bold">{lang === 'es' ? 'Capa Activa' : 'Active Overlay'}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOverlays(prev => prev.filter(o => o.id !== selectedOverlay.id));
+                      setSelectedOverlayId(null);
+                    }}
+                    className="text-[10px] text-red-400 hover:text-red-300 font-bold cursor-pointer"
+                  >
+                    ✕ {lang === 'es' ? 'Eliminar' : 'Delete'}
+                  </button>
+                </div>
+
+                {/* Texto de la Etiqueta */}
+                <div className="flex flex-col gap-1 text-xs">
+                  <span className="text-[10px] text-zinc-500 uppercase font-bold">{lang === 'es' ? 'Texto' : 'Text'}</span>
+                  <input
+                    type="text"
+                    value={selectedOverlay.text}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, text: val } : o));
+                    }}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-zinc-200 text-xs font-semibold focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Sincronización & Duración */}
+                <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-blue-950/30 border border-blue-800/50 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-blue-300 flex items-center gap-1">
+                      <span>⏱️</span>
+                      <span>{lang === 'es' ? 'Duración en Pantalla' : 'Screen Duration'}</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-zinc-400">
+                      {selectedOverlay.startTime.toFixed(1)}s ➔ {(selectedOverlay.startTime + selectedOverlay.duration).toFixed(1)}s
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[10px] text-zinc-400 font-bold block mb-1">Inicia en (s)</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={selectedOverlay.startTime}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, startTime: val } : o));
+                        }}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 font-mono text-xs"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-400 font-bold block mb-1">Duración (s)</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0.4"
+                        value={selectedOverlay.duration}
+                        onChange={(e) => {
+                          const val = Math.max(0.4, parseFloat(e.target.value) || 0.4);
+                          setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, duration: val } : o));
+                        }}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-blue-300 font-bold font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, startTime: Number(playheadTime.toFixed(1)) } : o));
+                        toast.success(`Etiqueta fijada al cabezal actual (${playheadTime.toFixed(1)}s)`);
+                      }}
+                      className="w-full py-1 px-2 rounded bg-zinc-900 hover:bg-zinc-800 text-[10px] text-zinc-300 font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <span>📍 Iniciar en Cabezal Actual ({playheadTime.toFixed(1)}s)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? {
+                          ...o,
+                          startTime: 0,
+                          duration: Number(totalTimelineDuration.toFixed(1))
+                        } : o));
+                        toast.success('Etiqueta configurada para durar todo el video');
+                      }}
+                      className="w-full py-1 px-2 rounded bg-zinc-900 hover:bg-zinc-800 text-[10px] text-zinc-300 font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <span>♾️ Durar Todo el Video ({totalTimelineDuration.toFixed(0)}s)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Posición y Escala */}
+                <div className="flex flex-col gap-2.5 text-xs">
+                  <span className="text-[10px] text-zinc-500 uppercase font-bold">{lang === 'es' ? 'Posición en Pantalla (Arrastrable)' : 'Screen Position'}</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block mb-0.5">X: {selectedOverlay.xPercent}%</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={selectedOverlay.xPercent}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, xPercent: val } : o));
+                        }}
+                        className="w-full accent-blue-500 cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-400 block mb-0.5">Y: {selectedOverlay.yPercent}%</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={selectedOverlay.yPercent}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, yPercent: val } : o));
+                        }}
+                        className="w-full accent-blue-500 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-0.5">
+                      <span className="text-[10px] text-zinc-400">{lang === 'es' ? 'Escala / Tamaño:' : 'Scale / Size:'}</span>
+                      <span className="text-[10px] font-mono text-blue-300 font-bold">{Math.round((selectedOverlay.scale || 1) * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2.5"
+                      step="0.1"
+                      value={selectedOverlay.scale || 1}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 1;
+                        setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, scale: val } : o));
+                      }}
+                      className="w-full accent-blue-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-zinc-950/40 border border-dashed border-zinc-800 text-xs">
+                <span className="text-[10px] uppercase font-bold text-zinc-500">
+                  {lang === 'es' ? 'Etiquetas en el Proyecto:' : 'Project Overlays:'}
+                </span>
+                {overlays.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center p-4 text-center gap-2">
+                    <span className="text-2xl">🏷️</span>
+                    <p className="text-[11px] text-zinc-500">
+                      {lang === 'es'
+                        ? 'No hay etiquetas creadas aún. Haz clic arriba en "+ Nueva Etiqueta" para añadir títulos o llamados a la acción.'
+                        : 'No overlays created yet.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1 max-h-48 overflow-y-auto minimal-scrollbar">
+                    {overlays.map((ov, idx) => (
+                      <button
+                        key={ov.id}
+                        type="button"
+                        onClick={() => setSelectedOverlayId(ov.id)}
+                        className="w-full p-2 rounded-lg bg-zinc-900/80 hover:bg-blue-950/40 border border-zinc-800 hover:border-blue-700/60 text-left flex items-center justify-between text-xs cursor-pointer transition-colors"
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-[10px] text-zinc-500 font-mono">{idx + 1}.</span>
+                          <span className="truncate text-zinc-200">{ov.text}</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-blue-300 shrink-0">
+                          {ov.startTime.toFixed(1)}s
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -2494,32 +2949,16 @@ export default function VideoStudio({
           </div>
         </div>
 
-        {/* CONTROLES DE CARPETA Y EXPORTACIÓN */}
+        {/* CONTROLES DE EXPORTACIÓN */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Carpeta Destino */}
-          <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-lg text-xs">
-            <span className="text-zinc-400">📁</span>
-            <select
-              value={targetFolder}
-              onChange={(e) => setTargetFolder(e.target.value)}
-              className="bg-transparent text-purple-300 font-mono focus:outline-none cursor-pointer max-w-[160px] truncate text-xs"
-            >
-              {availableFolders.map((f) => (
-                <option key={f.path} value={f.path} className="bg-zinc-900 text-zinc-200">
-                  {f.name}
-                </option>
-              ))}
-              {targetFolder && !availableFolders.some(f => f.path === targetFolder) && (
-                <option value={targetFolder} className="bg-zinc-900 text-purple-300">
-                  {targetFolder.split(/[/\\]/).slice(-2).join('/')}
-                </option>
-              )}
-            </select>
-          </div>
-
           {/* Botón Exportar Video Final */}
           <button
-            onClick={() => setIsExportModalOpen(true)}
+            onClick={() => {
+              if (activeProject?.title && !newFolderName) {
+                setNewFolderName(activeProject.title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_'));
+              }
+              setIsExportModalOpen(true);
+            }}
             disabled={isRenderingPreview || isRenderingFull}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-950/50 transition-all cursor-pointer disabled:opacity-50"
           >
@@ -3224,243 +3663,9 @@ export default function VideoStudio({
           </div>
         </div>
 
-        {/* ── PANEL DERECHO: INSPECTOR CONTEXTUAL (3 COLS) ──────────────────── */}
+        {/* ── PANEL DERECHO: INSPECTOR MULTI-PESTAÑA (3 COLS) ───────────────── */}
         <div className="lg:col-span-3 bg-[#0e0e13] border border-zinc-800/80 rounded-2xl p-3 flex flex-col gap-3 overflow-y-auto minimal-scrollbar">
-
-          {/* INSPECTOR CONTEXTUAL: TEXTO, AUDIO O VIDEO/LOOPER */}
-          {selectedOverlay ? (
-            /* CASO B: Overlay de Texto Seleccionado */
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
-                <span className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
-                  <span>🏷️</span>
-                  <span>Inspector de Etiqueta</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOverlays(prev => prev.filter(o => o.id !== selectedOverlay.id));
-                    setSelectedOverlayId(null);
-                  }}
-                  className="text-[10px] text-red-400 hover:text-red-300 font-bold cursor-pointer"
-                >
-                  ✕ Eliminar
-                </button>
-              </div>
-
-              {/* Texto de la Etiqueta */}
-              <div className="flex flex-col gap-1 text-xs">
-                <span className="text-[10px] text-zinc-500 uppercase font-bold">Texto</span>
-                <input
-                  type="text"
-                  value={selectedOverlay.text}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, text: val } : o));
-                  }}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-zinc-200 text-xs font-semibold"
-                />
-              </div>
-
-              {/* ⏱️ Sincronización & Duración: Tiempo que debe durar */}
-              <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-blue-950/30 border border-blue-800/50 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase font-bold text-blue-300 flex items-center gap-1">
-                    <span>⏱️</span>
-                    <span>Duración en Pantalla</span>
-                  </span>
-                  <span className="text-[10px] font-mono text-zinc-400">
-                    {selectedOverlay.startTime.toFixed(1)}s ➔ {(selectedOverlay.startTime + selectedOverlay.duration).toFixed(1)}s
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="text-[10px] text-zinc-400 font-bold block mb-1">Aparece en (s)</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={selectedOverlay.startTime}
-                      onChange={(e) => {
-                        const val = Math.max(0, parseFloat(e.target.value) || 0);
-                        setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, startTime: val } : o));
-                      }}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 font-mono text-xs"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 font-bold block mb-1">Duración (s)</span>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0.4"
-                      value={selectedOverlay.duration}
-                      onChange={(e) => {
-                        const val = Math.max(0.4, parseFloat(e.target.value) || 0.4);
-                        setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, duration: val } : o));
-                      }}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-blue-300 font-bold font-mono text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, startTime: Number(playheadTime.toFixed(1)) } : o));
-                      toast.success(`Etiqueta fijada al cabezal actual (${playheadTime.toFixed(1)}s)`);
-                    }}
-                    className="w-full py-1 px-2 rounded bg-zinc-900 hover:bg-zinc-800 text-[10px] text-zinc-300 font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                  >
-                    <span>📍 Iniciar en Cabezal Actual ({playheadTime.toFixed(1)}s)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? {
-                        ...o,
-                        startTime: 0,
-                        duration: Number(totalTimelineDuration.toFixed(1))
-                      } : o));
-                      toast.success('Etiqueta configurada para durar todo el video');
-                    }}
-                    className="w-full py-1 px-2 rounded bg-zinc-900 hover:bg-zinc-800 text-[10px] text-zinc-300 font-semibold border border-zinc-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                  >
-                    <span>♾️ Durar Todo el Video ({totalTimelineDuration.toFixed(0)}s)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Posición y Escala */}
-              <div className="flex flex-col gap-2.5 text-xs">
-                <span className="text-[10px] text-zinc-500 uppercase font-bold">Posición en Pantalla (Arrastrable)</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="text-[10px] text-zinc-400 block mb-0.5">X: {selectedOverlay.xPercent}%</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={selectedOverlay.xPercent}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, xPercent: val } : o));
-                      }}
-                      className="w-full accent-blue-500 cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 block mb-0.5">Y: {selectedOverlay.yPercent}%</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={selectedOverlay.yPercent}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, yPercent: val } : o));
-                      }}
-                      className="w-full accent-blue-500 cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center mb-0.5">
-                    <span className="text-[10px] text-zinc-400">Escala / Tamaño:</span>
-                    <span className="text-[10px] font-mono text-blue-300 font-bold">{Math.round((selectedOverlay.scale || 1) * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="2.5"
-                    step="0.1"
-                    value={selectedOverlay.scale || 1}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 1;
-                      setOverlays(prev => prev.map(o => o.id === selectedOverlay.id ? { ...o, scale: val } : o));
-                    }}
-                    className="w-full accent-blue-500 cursor-pointer"
-                  />
-                </div>
-              </div>
-            </div>
-          ) : selectedAudioCut ? (
-            /* CASO C: Pista de Audio Seleccionada (Track A1) */
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/60">
-                <span className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
-                  <span>🎵</span>
-                  <span className="truncate max-w-[140px]">Inspector de Audio</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAudioCuts(prev => prev.filter(a => a.id !== selectedAudioCut.id));
-                    setSelectedAudioCutId(null);
-                  }}
-                  className="text-[10px] text-red-400 hover:text-red-300 font-bold cursor-pointer"
-                >
-                  ✕ Quitar de pista
-                </button>
-              </div>
-
-              {/* Nombre de la pista */}
-              <div className="flex flex-col gap-1 text-xs">
-                <span className="text-[10px] text-zinc-500 uppercase font-bold">Pista / Archivo</span>
-                <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-200 font-semibold truncate text-[11px]" title={selectedAudioCut.name}>
-                  {selectedAudioCut.name}
-                </div>
-              </div>
-
-
-              {/* Volumen individual */}
-              <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-zinc-400 font-bold">Volumen de esta pista</span>
-                  <span className="text-[10px] font-mono text-indigo-300 font-bold">
-                    {Math.round((selectedAudioCut.volume ?? 1) * 100)}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1.5"
-                  step="0.05"
-                  value={selectedAudioCut.volume ?? 1}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    setAudioCuts(prev => prev.map(a => a.id === selectedAudioCut.id ? { ...a, volume: val } : a));
-                  }}
-                  className="w-full accent-indigo-500 cursor-pointer"
-                />
-              </div>
-
-              {/* Botón duplicar pista */}
-              <button
-                type="button"
-                onClick={() => {
-                  const duplicated: TimelineAudioCut = {
-                    ...selectedAudioCut,
-                    id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                    startTime: Number((selectedAudioCut.startTime + selectedAudioCut.duration).toFixed(1)),
-                  };
-                  setAudioCuts(prev => [...prev, duplicated]);
-                  setSelectedAudioCutId(duplicated.id);
-                  toast.success('Pista de audio duplicada');
-                }}
-                className="w-full py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-              >
-                <span>📋</span>
-                <span>Duplicar Pista de Audio</span>
-              </button>
-            </div>
-          ) : (
-            /* CASO VIDEO & LOOPER (Árbol jerárquico -Video -> ------Looper) */
-            renderVideoInspector()
-          )}
+          {renderRightInspector()}
         </div>
       </div>
 
@@ -3579,16 +3784,25 @@ export default function VideoStudio({
             }
           }}
           selectedCutId={selectedCutId}
-          onSelectCut={setSelectedCutId}
+          onSelectCut={(id) => {
+            setSelectedCutId(id);
+            if (id) setActiveInspectorTab('clip');
+          }}
           onSplitAtPlayhead={handleSplitClipAtPlayhead}
           overlays={overlays}
           onUpdateOverlays={setOverlays}
           selectedOverlayId={selectedOverlayId}
-          onSelectOverlay={setSelectedOverlayId}
+          onSelectOverlay={(id) => {
+            setSelectedOverlayId(id);
+            if (id) setActiveInspectorTab('overlay');
+          }}
           audioCuts={audioCuts}
           onUpdateAudioCuts={setAudioCuts}
           selectedAudioCutId={selectedAudioCutId}
-          onSelectAudioCut={setSelectedAudioCutId}
+          onSelectAudioCut={(id) => {
+            setSelectedAudioCutId(id);
+            if (id) setActiveInspectorTab('audio');
+          }}
           musicName={musicAudioPath ? musicAudioPath.split(/[/\\]/).pop() : undefined}
           musicVolume={musicVolume}
           onChangeMusicVolume={setMusicVolume}
@@ -3692,30 +3906,83 @@ export default function VideoStudio({
 
             {/* Body */}
             <div className="p-5 flex flex-col gap-4 text-xs">
-              {/* Carpeta Destino */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] text-zinc-300 font-bold flex items-center gap-1.5">
-                  <span>📁</span>
-                  <span>{lang === 'es' ? 'Carpeta Destino' : 'Destination Folder'}</span>
-                </label>
-                <div className="bg-zinc-950 border border-zinc-800 focus-within:border-purple-500 rounded-xl px-3 py-2 text-xs">
-                  <select
-                    value={targetFolder}
-                    onChange={(e) => setTargetFolder(e.target.value)}
-                    className="w-full bg-transparent text-purple-300 font-mono focus:outline-none cursor-pointer text-xs"
-                  >
-                    {availableFolders.map((f) => (
-                      <option key={f.path} value={f.path} className="bg-zinc-900 text-zinc-200">
-                        {f.name}
-                      </option>
-                    ))}
-                    {targetFolder && !availableFolders.some(f => f.path === targetFolder) && (
-                      <option value={targetFolder} className="bg-zinc-900 text-purple-300">
-                        {targetFolder.split(/[/\\]/).slice(-2).join('/')}
-                      </option>
-                    )}
-                  </select>
+              {/* Ubicación y Destino del Video */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] text-zinc-300 font-bold flex items-center gap-1.5">
+                    <span>📁</span>
+                    <span>{lang === 'es' ? 'Ubicación y Destino del Video' : 'Video Location & Destination'}</span>
+                  </label>
+                  <div className="flex items-center bg-zinc-900 border border-zinc-800 p-0.5 rounded-lg text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setExportDestinationMode('existing')}
+                      className={`px-2 py-0.5 rounded font-medium transition-colors cursor-pointer ${
+                        exportDestinationMode === 'existing'
+                          ? 'bg-purple-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {lang === 'es' ? 'Existente' : 'Existing'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExportDestinationMode('new')}
+                      className={`px-2 py-0.5 rounded font-medium transition-colors cursor-pointer ${
+                        exportDestinationMode === 'new'
+                          ? 'bg-purple-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {lang === 'es' ? '+ Nueva Carpeta' : '+ New Folder'}
+                    </button>
+                  </div>
                 </div>
+
+                {exportDestinationMode === 'existing' ? (
+                  <div className="bg-zinc-950 border border-zinc-800 focus-within:border-purple-500 rounded-xl px-3 py-2 text-xs">
+                    <select
+                      value={targetFolder}
+                      onChange={(e) => setTargetFolder(e.target.value)}
+                      className="w-full bg-transparent text-purple-300 font-mono focus:outline-none cursor-pointer text-xs"
+                    >
+                      <option value="" className="bg-zinc-900 text-zinc-500">
+                        {lang === 'es' ? '— Selecciona una carpeta del workspace —' : '— Select a workspace folder —'}
+                      </option>
+                      {availableFolders.map((f) => (
+                        <option key={f.path} value={f.path} className="bg-zinc-900 text-zinc-200">
+                          {f.name}
+                        </option>
+                      ))}
+                      {targetFolder && !availableFolders.some(f => f.path === targetFolder) && (
+                        <option value={targetFolder} className="bg-zinc-900 text-purple-300">
+                          {targetFolder.split(/[/\\]/).slice(-2).join('/')}
+                        </option>
+                      )}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 p-3 rounded-xl bg-purple-950/20 border border-purple-800/40">
+                    <div className="text-[10px] text-purple-300 font-medium flex items-center gap-1.5">
+                      <span>✨</span>
+                      <span>{lang === 'es' ? 'Crear carpeta del video automáticamente con sus subcarpetas:' : 'Automatically create video folder with production subfolders:'}</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={newFolderName}
+                      onChange={(e) => setNewFolderName(e.target.value)}
+                      placeholder="Nombre_Del_Video"
+                      className="w-full bg-zinc-950 border border-zinc-800 focus:border-purple-500 rounded-lg px-2.5 py-1.5 text-zinc-200 font-mono text-xs outline-none"
+                    />
+                    <div className="text-[10px] text-zinc-400 font-mono truncate">
+                      {activeProject?.channel ? (
+                        <span>Canal: <strong className="text-zinc-300">{activeProject.channel.name}</strong>/{newFolderName || '...'}/Videos</span>
+                      ) : (
+                        <span>Workspace: <strong className="text-zinc-300">Raíz</strong>/{newFolderName || '...'}/Videos</span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Nombre del Archivo */}

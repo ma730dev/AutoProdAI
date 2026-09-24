@@ -3,6 +3,38 @@ import { db } from '@/src/prisma/db';
 import { getAuthUser } from '@/lib/auth';
 
 /**
+ * Helper para garantizar que la tabla videoProject exista en PostgreSQL
+ * de forma idempotente, incluso si el arnés de migraciones no se ha ejecutado aún.
+ */
+async function ensureVideoProjectTable() {
+  try {
+    await db.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "public"."videoProject" (
+        "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+        "userId" UUID NOT NULL,
+        "channelId" UUID,
+        "title" TEXT NOT NULL,
+        "aspectRatio" TEXT NOT NULL DEFAULT '16:9',
+        "resolution" TEXT NOT NULL DEFAULT '1080p',
+        "timelineData" JSONB NOT NULL DEFAULT '{}'::jsonb,
+        "thumbnailUrl" TEXT,
+        "durationSeconds" DOUBLE PRECISION NOT NULL DEFAULT 0,
+        "status" TEXT NOT NULL DEFAULT 'DRAFT',
+        "storageMode" TEXT NOT NULL DEFAULT 'LOCAL',
+        "localPath" TEXT,
+        "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "videoProject_pkey" PRIMARY KEY ("id")
+      );
+      CREATE INDEX IF NOT EXISTS "videoProject_userId_idx" ON "public"."videoProject"("userId");
+      CREATE INDEX IF NOT EXISTS "videoProject_channelId_idx" ON "public"."videoProject"("channelId");
+    `);
+  } catch (e) {
+    console.warn('[video-projects] Note on ensureVideoProjectTable:', e);
+  }
+}
+
+/**
  * GET /api/video-projects
  * Lista los proyectos de edición del usuario autenticado con filtros opcionales.
  */
@@ -17,42 +49,59 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const search = searchParams.get('search');
 
-    const where: any = { userId: user.id };
+    // 1. Si Prisma Client ya fue compilado con el modelo VideoProject
+    if ((db as any).videoProject) {
+      const where: any = { userId: user.id };
 
-    if (channelId) {
-      if (channelId === 'none' || channelId === 'UNASSIGNED') {
-        where.channelId = null;
-      } else if (channelId !== 'ALL') {
-        where.channelId = channelId;
-      }
-    }
-
-    if (status && status !== 'ALL') {
-      where.status = status;
-    }
-
-    if (!(db as any).videoProject) {
-      console.error('[video-projects] db.videoProject no está compilado en Prisma Client. Ejecuta `pnpm exec prisma generate`.');
-      return NextResponse.json({
-        error: 'El modelo VideoProject no está compilado en Prisma Client. Por favor ejecuta "pnpm exec prisma generate" en tu terminal para sincronizar Prisma.',
-        needsPrismaGenerate: true
-      }, { status: 500 });
-    }
-
-    const projects = await (db as any).videoProject.findMany({
-      where,
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        channel: {
-          select: { id: true, name: true, profilePicture: true }
+      if (channelId) {
+        if (channelId === 'none' || channelId === 'UNASSIGNED') {
+          where.channelId = null;
+        } else if (channelId !== 'ALL') {
+          where.channelId = channelId;
         }
       }
-    });
+
+      if (status && status !== 'ALL') {
+        where.status = status;
+      }
+
+      if (search && search.trim()) {
+        where.title = { contains: search.trim(), mode: 'insensitive' };
+      }
+
+      const projects = await (db as any).videoProject.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          channel: {
+            select: { id: true, name: true, profilePicture: true }
+          }
+        }
+      });
+
+      return NextResponse.json({
+        success: true,
+        total: projects.length,
+        projects
+      });
+    }
+
+    // 2. Fallback SQL resiliente en caliente si Prisma Client aún no se ha reiniciado
+    await ensureVideoProjectTable();
+    const rows: any[] = await db.$queryRawUnsafe(`
+      SELECT 
+        p.*,
+        CASE WHEN c.id IS NOT NULL THEN json_build_object('id', c.id, 'name', c.name, 'profilePicture', c."profilePicture") ELSE NULL END as channel
+      FROM "public"."videoProject" p
+      LEFT JOIN "public"."Channel" c ON p."channelId" = c.id
+      WHERE p."userId" = $1::uuid
+      ORDER BY p."updatedAt" DESC
+    `, user.id);
 
     return NextResponse.json({
       success: true,
-      total: projects.length,
-      projects
+      total: rows.length,
+      projects: rows
     });
   } catch (err: any) {
     console.error('Error fetching video projects:', err);
@@ -97,31 +146,45 @@ export async function POST(req: NextRequest) {
           version: '1.0.0',
         };
 
-    if (!(db as any).videoProject) {
+    // 1. Si Prisma Client ya tiene el modelo compilado
+    if ((db as any).videoProject) {
+      const project = await (db as any).videoProject.create({
+        data: {
+          userId: user.id,
+          channelId: validChannelId,
+          title: title.trim(),
+          aspectRatio: aspectRatio || '16:9',
+          resolution: resolution || '1080p',
+          timelineData: defaultTimeline,
+          storageMode: storageMode === 'CLOUD' ? 'CLOUD' : 'LOCAL',
+          localPath: localPath || null,
+          status: 'DRAFT',
+        },
+        include: {
+          channel: {
+            select: { id: true, name: true, profilePicture: true }
+          }
+        }
+      });
+
       return NextResponse.json({
-        error: 'El modelo VideoProject no está compilado en Prisma Client. Ejecuta "pnpm exec prisma generate" en tu terminal.',
-        needsPrismaGenerate: true
-      }, { status: 500 });
+        success: true,
+        project
+      }, { status: 201 });
     }
 
-    const project = await (db as any).videoProject.create({
-      data: {
-        userId: user.id,
-        channelId: validChannelId,
-        title: title.trim(),
-        aspectRatio: aspectRatio || '16:9',
-        resolution: resolution || '1080p',
-        timelineData: defaultTimeline,
-        storageMode: storageMode === 'CLOUD' ? 'CLOUD' : 'LOCAL',
-        localPath: localPath || null,
-        status: 'DRAFT',
-      },
-      include: {
-        channel: {
-          select: { id: true, name: true, profilePicture: true }
-        }
-      }
-    });
+    // 2. Fallback SQL resiliente en caliente si Prisma Client aún no se ha recompilado
+    await ensureVideoProjectTable();
+    const rows: any[] = await db.$queryRawUnsafe(`
+      INSERT INTO "public"."videoProject" (
+        "userId", "channelId", "title", "aspectRatio", "resolution", "timelineData", "storageMode", "localPath", "status"
+      ) VALUES (
+        $1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7, $8, 'DRAFT'
+      )
+      RETURNING *
+    `, user.id, validChannelId, title.trim(), aspectRatio || '16:9', resolution || '1080p', JSON.stringify(defaultTimeline), storageMode === 'CLOUD' ? 'CLOUD' : 'LOCAL', localPath || null);
+
+    const project = rows[0] || null;
 
     return NextResponse.json({
       success: true,
