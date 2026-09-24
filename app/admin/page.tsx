@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Language } from "../translations";
 import ProfileDropdown from '@/components/dashboard/ProfileDropdown';
-import UserSettingsModal from '@/components/dashboard/UserSettingsModal';
+import UserSettingsModal from '@/components/modals/UserSettingsModal';
 import { PLANS_CONFIG, calculatePlanCredits } from '@/lib/pricing-config';
 
 interface UserAdmin {

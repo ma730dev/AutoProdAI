@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Language } from '@/app/translations';
-import { Conversation } from './types';
-import FileTree, { FileNode } from './FileTree';
+import { Conversation } from '@/components/dashboard/types';
+import FileTree, { FileNode } from '@/components/workspace/FileTree';
 import { ControladorClient } from '@/lib/controlador-client';
 import { toast } from 'sonner';
 
@@ -11,7 +11,7 @@ interface Props {
   lang: Language;
   conversations: Conversation[];
   activeConversationId: string | null;
-  activeView: 'home' | 'chat' | 'editor' | 'looper' | 'subtitles' | 'assets' | 'images';
+  activeView: 'home' | 'chat' | 'editor' | 'looper' | 'subtitles' | 'assets' | 'images' | 'tts' | 'channels';
   workspacePath: string | null;
   workspaceTree: FileNode[];
   motorStatus: boolean;
@@ -27,6 +27,7 @@ interface Props {
   onOpenTTS?: () => void;
   onOpenAssets?: () => void;
   onOpenImages?: () => void;
+  onOpenChannels?: () => void;
   onLinkWorkspace?: () => void;
   onToggleCollapse?: () => void;
 }
@@ -51,6 +52,7 @@ export default function ConversationSidebar({
   onOpenTTS,
   onOpenAssets,
   onOpenImages,
+  onOpenChannels,
   onLinkWorkspace,
   onToggleCollapse,
 }: Props) {
@@ -271,6 +273,22 @@ export default function ConversationSidebar({
               <span className="flex items-center gap-2">
                 <span>🎙️</span>
                 <span>{lang === 'es' ? 'Locución & TTS' : 'Voiceover & TTS'}</span>
+              </span>
+            </button>
+          )}
+
+          {/* Cuentas y Canales Vinculados */}
+          {onOpenChannels && (
+            <button
+              onClick={onOpenChannels}
+              className={`w-full py-2 px-3 rounded-lg text-xs font-semibold border transition-all flex items-center justify-between cursor-pointer shrink-0 ${activeView === 'channels'
+                ? 'bg-red-950/70 border-red-500 text-red-200 shadow-sm shadow-red-500/20'
+                : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
+                }`}
+            >
+              <span className="flex items-center gap-2">
+                <span>🌐</span>
+                <span>{lang === 'es' ? 'Canales & Redes' : 'Linked Channels'}</span>
               </span>
             </button>
           )}

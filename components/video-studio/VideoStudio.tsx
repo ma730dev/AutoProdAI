@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Language } from '@/app/translations';
 import { ControladorClient, getControladorUrl } from '@/lib/controlador-client';
-import { Channel } from './types';
+import { Channel } from '@/components/dashboard/types';
 import { toast } from 'sonner';
 import TimelinePro, { TimelineCut, OverlayElement, SubtitleItem, TimelineAudioCut } from './timeline/TimelinePro';
+import ProjectHub, { VideoProjectRecord } from './ProjectHub';
 
 export interface VideoItem {
   id?: string;
@@ -137,6 +138,13 @@ export default function VideoStudio({
   onRefreshWorkspace,
   initialMediaTab,
 }: VideoStudioProps) {
+  // ── GESTIÓN DE PROYECTOS Y PERSISTENCIA (LOCAL-FIRST & CLOUD) ──
+  const [activeProject, setActiveProject] = useState<VideoProjectRecord | null>(null);
+  const [isAutoSaving, setIsAutoSaving] = useState<boolean>(false);
+  const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null);
+  const [exportEngine, setExportEngine] = useState<'local' | 'cloud'>('local');
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // ── PESTAÑA ACTIVA EN MEDIA BIN (IZQUIERDA: SOLO MEDIOS) ──
   const [activeMediaTab, setActiveMediaTab] = useState<'clips' | 'audio' | 'text' | 'subtitles'>(initialMediaTab || 'clips');
   const [dismissedSyncBar, setDismissedSyncBar] = useState<boolean>(false);
@@ -420,6 +428,118 @@ export default function VideoStudio({
     const targetBounds = Math.max(sequenceDuration, maxAudioEnd, maxOverlayEnd);
     return targetBounds > 0 ? targetBounds : 15;
   }, [sequenceDuration, maxAudioEnd, maxOverlayEnd]);
+
+  // ── CARGAR PROYECTO SELECCIONADO DESDE PROJECT HUB ──
+  const handleLoadProject = useCallback((project: VideoProjectRecord) => {
+    setActiveProject(project);
+
+    // Ajustar preset de aspect ratio
+    if (project.aspectRatio) {
+      const preset = VIDEO_FORMAT_PRESETS.find(p => p.ratio === project.aspectRatio);
+      if (preset) setSelectedFormatId(preset.id);
+    }
+
+    if (project.title) {
+      const cleanName = project.title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+      setOutputFilename(`${cleanName}.mp4`);
+    }
+
+    // Cargar datos de la línea de tiempo guardada
+    const data = project.timelineData || {};
+    if (Array.isArray(data.cuts)) {
+      setTimelineCuts(data.cuts);
+    } else {
+      setTimelineCuts([]);
+    }
+
+    if (Array.isArray(data.audio)) {
+      setAudioCuts(data.audio);
+    } else {
+      setAudioCuts([]);
+    }
+
+    if (Array.isArray(data.overlays)) {
+      setOverlays(data.overlays);
+    } else {
+      setOverlays([]);
+    }
+
+    if (Array.isArray(data.subtitles)) {
+      setSubtitles(data.subtitles);
+    } else {
+      setSubtitles([]);
+    }
+
+    if (typeof data.musicVolume === 'number') {
+      setMusicVolume(data.musicVolume);
+    }
+    if (data.selectedFormatId) {
+      setSelectedFormatId(data.selectedFormatId);
+    }
+    if (data.targetFolder) {
+      setTargetFolder(data.targetFolder);
+    }
+
+    toast.success(`Proyecto abierto: ${project.title}`);
+  }, []);
+
+  // ── AUTO-GUARDADO PERSISTENTE DEL PROYECTO (DEBOUNCE 2S) ──
+  useEffect(() => {
+    if (!activeProject?.id) return;
+
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        setIsAutoSaving(true);
+        const currentPreset = VIDEO_FORMAT_PRESETS.find(p => p.id === selectedFormatId) || VIDEO_FORMAT_PRESETS[0];
+        const payload = {
+          cuts: timelineCuts,
+          audio: audioCuts,
+          overlays,
+          subtitles,
+          musicVolume,
+          selectedFormatId,
+          outputFilename,
+          targetFolder,
+          version: '1.0.0',
+        };
+
+        await fetch(`/api/video-projects/${activeProject.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            timelineData: payload,
+            durationSeconds: totalTimelineDuration || 0,
+            aspectRatio: currentPreset.ratio,
+          }),
+        });
+
+        setLastSavedTime(new Date());
+      } catch (err) {
+        console.error('Error en auto-guardado de proyecto:', err);
+      } finally {
+        setIsAutoSaving(false);
+      }
+    }, 2000);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+    };
+  }, [
+    activeProject?.id,
+    timelineCuts,
+    audioCuts,
+    overlays,
+    subtitles,
+    musicVolume,
+    selectedFormatId,
+    outputFilename,
+    targetFolder,
+    totalTimelineDuration,
+  ]);
 
   // Inspeccionar metadatos de un video para anexarlo a la bandeja
   const inspectAndAttachMeta = async (filePath: string, fileName: string) => {
@@ -2321,6 +2441,17 @@ export default function VideoStudio({
 
   const currentPreset = VIDEO_FORMAT_PRESETS.find(p => p.id === selectedFormatId) || VIDEO_FORMAT_PRESETS[0];
 
+  // Si no hay proyecto activo, mostrar el Hub de Proyectos (Launcher)
+  if (!activeProject) {
+    return (
+      <ProjectHub
+        channels={channels}
+        onOpenProject={handleLoadProject}
+        onBackToDashboard={onBack}
+      />
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col h-full bg-[#08080b] text-zinc-200 overflow-y-auto minimal-scrollbar p-3 lg:p-4 gap-3">
 
@@ -2328,22 +2459,36 @@ export default function VideoStudio({
       <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pb-2.5 border-b border-zinc-800/80 shrink-0">
         <div className="flex items-center gap-3">
           <button
-            onClick={onBack}
+            onClick={() => setActiveProject(null)}
             className="text-xs text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700"
+            title="Volver al Hub de Proyectos"
           >
-            ← {lang === 'es' ? 'Volver' : 'Back'}
+            ← {lang === 'es' ? 'Proyectos' : 'Projects'}
           </button>
           <div className="flex items-center gap-2">
             <span className="text-xl">🎬</span>
             <div className="flex flex-col">
-              <h1 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
-                <span>Video Studio</span>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-bold text-white tracking-tight truncate max-w-[220px]" title={activeProject.title}>
+                  {activeProject.title}
+                </h1>
                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 font-mono font-bold border border-purple-800/60">
-                  EDITOR PRO
+                  {currentPreset.ratio}
                 </span>
-              </h1>
+                {isAutoSaving ? (
+                  <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                    Guardando...
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    Guardado
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] text-zinc-400">
-                {lang === 'es' ? 'Montaje multipista, bucles continuos y exportación acelerada' : 'Multi-track timeline, seamless loops & GPU export'}
+                {activeProject.channel ? `Canal: ${activeProject.channel.name}` : (lang === 'es' ? 'Edición libre (Sin canal)' : 'Standalone project')}
               </span>
             </div>
           </div>
@@ -3615,6 +3760,46 @@ export default function VideoStudio({
                     <option value="master">💎 Master Ultra (CRF 14)</option>
                     <option value="balanced">⚖️ Equilibrado (CRF 21)</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Motor de Cómputo (Local vs Nube) */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] text-zinc-300 font-bold flex items-center justify-between">
+                  <span>{lang === 'es' ? 'Motor de Cómputo' : 'Compute Engine'}</span>
+                  <span className="text-[10px] text-purple-400 font-mono">Híbrido</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExportEngine('local')}
+                    className={`p-2 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                      exportEngine === 'local'
+                        ? 'bg-purple-950/40 border-purple-500 text-white shadow-sm'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-base">⚡</span>
+                    <div>
+                      <div className="font-bold text-[11px]">Mi PC (Local)</div>
+                      <div className="text-[9px] text-zinc-400">$0 costo • GPU nativa</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExportEngine('cloud')}
+                    className={`p-2 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                      exportEngine === 'cloud'
+                        ? 'bg-purple-950/40 border-purple-500 text-white shadow-sm'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-base">☁️</span>
+                    <div>
+                      <div className="font-bold text-[11px]">En la Nube</div>
+                      <div className="text-[9px] text-zinc-400">Worker remoto</div>
+                    </div>
+                  </button>
                 </div>
               </div>
 

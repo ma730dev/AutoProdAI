@@ -7,7 +7,7 @@ import {
   SubtitlesJobStatus,
   SubtitleResultItem,
 } from '@/lib/controlador-client';
-import { PreExecutionEstimateModal } from './PreExecutionEstimateModal';
+import { PreExecutionEstimateModal } from '@/components/modals/PreExecutionEstimateModal';
 import { toast } from 'sonner';
 
 interface VideoSubtitlesStudioProps {

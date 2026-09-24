@@ -62,6 +62,7 @@ export default function AssetLibraryView({
     totalAssets: 0,
     cloudSizeBytes: 0,
     localSizeBytes: 0,
+    cacheSizeBytes: 0,
     quotaBytes: 500 * 1024 * 1024,
     quotaUsedPercent: 0,
     countByType: {
@@ -74,6 +75,30 @@ export default function AssetLibraryView({
       OTHER: 0,
     } as Record<string, number>,
   });
+
+  const [isClearingCache, setIsClearingCache] = useState(false);
+
+  // Vaciar caché temporal de la nube
+  const handleClearCache = async () => {
+    if (!confirm(lang === 'es' 
+      ? '¿Deseas vaciar el caché temporal (previews, proxies y temporales)? Tus canciones y archivos permanentes no se borrarán.' 
+      : 'Do you want to clear temporary cache? Your permanent files and songs will not be deleted.')) {
+      return;
+    }
+
+    try {
+      setIsClearingCache(true);
+      const res = await fetch('/api/assets/clear-cache', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al vaciar caché');
+      toast.success(data.message || 'Caché vaciado correctamente');
+      fetchAssets();
+    } catch (err: any) {
+      toast.error(err.message || 'Error al vaciar caché');
+    } finally {
+      setIsClearingCache(false);
+    }
+  };
 
   // Modals state
   const [previewAsset, setPreviewAsset] = useState<AssetRecord | null>(null);
@@ -377,7 +402,7 @@ export default function AssetLibraryView({
         {/* Cloud Quota & Actions */}
         <div className="flex items-center gap-4 flex-wrap">
           {/* Storage Quota Bar */}
-          <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl px-3 py-2 min-w-[220px]">
+          <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl px-3 py-2 min-w-[240px]">
             <div className="flex items-center justify-between text-[11px] mb-1">
               <span className="text-zinc-400 flex items-center gap-1 font-medium">
                 <span>☁️</span> {lang === 'es' ? 'Almacenamiento Nube' : 'Cloud Storage'}
@@ -394,6 +419,20 @@ export default function AssetLibraryView({
                 style={{ width: `${Math.max(3, stats.quotaUsedPercent)}%` }}
               />
             </div>
+            {stats.cacheSizeBytes > 0 && (
+              <div className="flex items-center justify-between mt-1.5 pt-1 border-t border-zinc-800/60 text-[10px]">
+                <span className="text-zinc-400 font-mono">⚡ Caché: {formatBytes(stats.cacheSizeBytes)}</span>
+                <button
+                  type="button"
+                  onClick={handleClearCache}
+                  disabled={isClearingCache}
+                  className="text-amber-400 hover:text-amber-300 font-semibold underline cursor-pointer disabled:opacity-50"
+                  title="Eliminar renders temporales, proxies y previews sin tocar tus archivos fijos"
+                >
+                  {isClearingCache ? (lang === 'es' ? 'Vaciando...' : 'Clearing...') : (lang === 'es' ? 'Vaciar Caché' : 'Clear Cache')}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Sync Local Button */}

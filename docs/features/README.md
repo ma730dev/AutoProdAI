@@ -53,6 +53,7 @@ Cada funcionalidad cuenta con su **Ficha Técnica** (código, endpoints y arquit
 | **FEAT-15** | **Text-to-Speech Multi-Motor (Edge-TTS & OpenAI)** | FastAPI / Edge-TTS / OpenAI | [Ficha Técnica](file:///e:/autoprod/docs/features/text_to_speech/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/text_to_speech/idea.md) |
 | **FEAT-16** | **Orquestación de Canales, Capa de Video (`config_video.md`) & Interactive Question Cards** | Next.js / React 19 / Prisma | [Ficha Técnica](file:///e:/autoprod/docs/features/channel_and_video_orchestration/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/channel_and_video_orchestration/idea.md) |
 | **FEAT-17** | **Instalador Oficial Standalone (`AutoProd-Setup.exe` / `.dmg`)** | Inno Setup / PyInstaller / GitHub Releases | [Ficha Técnica](file:///e:/autoprod/docs/features/standalone_installer/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/standalone_installer/idea.md) |
+| **FEAT-18** | **VideoProjects, Normalización de BD, Caché & Cuentas Vinculadas** | Next.js / Supabase / Prisma | [Ficha Técnica](file:///e:/autoprod/docs/features/video_projects/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/video_projects/idea.md) |
 
 ---
 
@@ -92,7 +93,7 @@ Cada funcionalidad cuenta con su **Ficha Técnica** (código, endpoints y arquit
 | **IDEA-C1** | **Dashboard de Analíticas y Retención de YouTube** | `P1` | `M` | `💡 IDEA` | Conexión con YouTube Analytics API para mostrar gráficas de retención, visitas por hora y CTR en el dashboard. |
 | **IDEA-C2** | **Generador de Community Posts & Stories** | `P2` | `S` | `💡 IDEA` | Automatización de publicaciones para la pestaña Comunidad previas al estreno para calentar audiencia. |
 | **IDEA-C3** | **Notificaciones Webhook a Discord / Telegram** | `P2` | `S` | `💡 IDEA` | Envío de alertas cuando un render nocturno termina o cuando un video se publica exitosamente. |
-| **IDEA-C4** | **Conexión de Canal vía YouTube OAuth 2.0** | `P2` | `XL` | `💡 IDEA` | Integración y autenticación con OAuth 2.0 para acceso directo al canal (tokens de refresco, permisos/scopes y cuotas de Google Cloud). |
+| **IDEA-C4** | **Conexión de Canal vía YouTube OAuth 2.0** | `P2` | `XL` | `✅ HECHO` | Integración y autenticación con OAuth 2.0 para acceso directo al canal (tokens de refresco, sincronización de ContentHistory y desacople de scraping, ver FEAT-18). |
 
 ### 💼 D. Negocio, SaaS, Cuentas & Multi-Tenant
 | ID | Idea | Prioridad | Esfuerzo | Estado | Hipótesis / Valor de Negocio |

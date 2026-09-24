@@ -11,28 +11,29 @@ import { ControladorClient } from '@/lib/controlador-client';
 
 import dynamic from 'next/dynamic';
 
-import ConversationSidebar from '@/components/dashboard/ConversationSidebar';
+import ConversationSidebar from '@/components/chat/ConversationSidebar';
 import Launchpad from '@/components/dashboard/Launchpad';
-import ChatPanel from '@/components/dashboard/ChatPanel';
+import ChatPanel from '@/components/chat/ChatPanel';
 import CreditCounter from '@/components/dashboard/CreditCounter';
 import ProfileDropdown from '@/components/dashboard/ProfileDropdown';
 import { AutoProdLogo } from '@/components/AutoProdLogo';
 
 // Dynamic lazy imports for heavy studios and modals to minimize initial bundle size and optimize PageSpeed
-const UserSettingsModal = dynamic(() => import('@/components/dashboard/UserSettingsModal'), { ssr: false });
-const SubscriptionPlansModal = dynamic(() => import('@/components/dashboard/SubscriptionPlansModal'), { ssr: false });
-const VideoStudio = dynamic(() => import('@/components/dashboard/VideoStudio'), { ssr: false });
-const VideoSubtitlesStudio = dynamic(() => import('@/components/dashboard/VideoSubtitlesStudio'), { ssr: false });
-const AssetLibraryView = dynamic(() => import('@/components/dashboard/AssetLibraryView'), { ssr: false });
-const ImageStudio = dynamic(() => import('@/components/dashboard/ImageStudio'), { ssr: false });
-const TextToSpeechStudio = dynamic(() => import('@/components/dashboard/TextToSpeechStudio'), { ssr: false });
-const FilePreviewer = dynamic(() => import('@/components/dashboard/FilePreviewer'), { ssr: false });
-const WorkspaceModal = dynamic(() => import('@/components/dashboard/WorkspaceModal'), { ssr: false });
-const ConfirmDeleteModal = dynamic(() => import('@/components/dashboard/ConfirmDeleteModal'), { ssr: false });
-const MarkdownEditor = dynamic(() => import('@/components/dashboard/MarkdownEditor'), { ssr: false });
+const UserSettingsModal = dynamic(() => import('@/components/modals/UserSettingsModal'), { ssr: false });
+const SubscriptionPlansModal = dynamic(() => import('@/components/modals/SubscriptionPlansModal'), { ssr: false });
+const VideoStudio = dynamic(() => import('@/components/video-studio/VideoStudio'), { ssr: false });
+const VideoSubtitlesStudio = dynamic(() => import('@/components/video-studio/VideoSubtitlesStudio'), { ssr: false });
+const AssetLibraryView = dynamic(() => import('@/components/asset-library/AssetLibraryView'), { ssr: false });
+const ImageStudio = dynamic(() => import('@/components/image-studio/ImageStudio'), { ssr: false });
+const TextToSpeechStudio = dynamic(() => import('@/components/tts-studio/TextToSpeechStudio'), { ssr: false });
+const LinkedAccountsView = dynamic(() => import('@/components/channels/LinkedAccountsView'), { ssr: false });
+const FilePreviewer = dynamic(() => import('@/components/workspace/FilePreviewer'), { ssr: false });
+const WorkspaceModal = dynamic(() => import('@/components/modals/WorkspaceModal'), { ssr: false });
+const ConfirmDeleteModal = dynamic(() => import('@/components/modals/ConfirmDeleteModal'), { ssr: false });
+const MarkdownEditor = dynamic(() => import('@/components/workspace/MarkdownEditor'), { ssr: false });
 
 import { Conversation, Message } from '@/components/dashboard/types';
-import { FileNode } from '@/components/dashboard/FileTree';
+import { FileNode } from '@/components/workspace/FileTree';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -262,7 +263,7 @@ export default function Dashboard() {
   };
 
   // ── Navigation State ──
-  const [activeView, setActiveView] = useState<'home' | 'chat' | 'editor' | 'looper' | 'subtitles' | 'assets' | 'images' | 'tts'>('home');
+  const [activeView, setActiveView] = useState<'home' | 'chat' | 'editor' | 'looper' | 'subtitles' | 'assets' | 'images' | 'tts' | 'channels'>('home');
   const [videoStudioTab, setVideoStudioTab] = useState<'clips' | 'audio' | 'text' | 'subtitles'>('clips');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
@@ -987,6 +988,7 @@ export default function Dashboard() {
                 onOpenAssets={() => setActiveView('assets')}
                 onOpenImages={() => setActiveView('images')}
                 onOpenTTS={() => setActiveView('tts')}
+                onOpenChannels={() => setActiveView('channels')}
                 onToggleCollapse={() => setIsLeftSidebarOpen(false)}
               />
             </aside>
@@ -1067,6 +1069,10 @@ export default function Dashboard() {
               motorStatus={motorStatus}
               onBackToDashboard={() => setActiveView('home')}
               onOpenSubtitlesStudio={() => setActiveView('subtitles')}
+            />
+          ) : activeView === 'channels' ? (
+            <LinkedAccountsView
+              onBack={() => setActiveView('home')}
             />
           ) : null}
 

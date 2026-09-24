@@ -47,29 +47,30 @@ Componente principal:
 ### 3. Panel Derecho — Inspector y Archivos
 Componentes:
 - **[`RightInspector.tsx`](file:///e:/AutoProd/components/dashboard/RightInspector.tsx)**: Panel inspector con información contextual.
-- **[`FileTree.tsx`](file:///e:/AutoProd/components/dashboard/FileTree.tsx)**: Árbol de archivos del workspace (conectado al Motor Python en puerto 8000).
-- **[`FilePreviewer.tsx`](file:///e:/AutoProd/components/dashboard/FilePreviewer.tsx)**: Vista previa de archivos del workspace.
-- **[`MarkdownEditor.tsx`](file:///e:/AutoProd/components/dashboard/MarkdownEditor.tsx)**: Editor de archivos Markdown con guardado al Motor Python.
+- **[`FileTree.tsx`](file:///e:/autoprod/components/workspace/FileTree.tsx)**: Árbol de archivos del workspace (conectado al Motor Python en puerto 8000).
+- **[`FilePreviewer.tsx`](file:///e:/autoprod/components/workspace/FilePreviewer.tsx)**: Vista previa de archivos del workspace.
+- **[`MarkdownEditor.tsx`](file:///e:/autoprod/components/workspace/MarkdownEditor.tsx)**: Editor de archivos Markdown con guardado al Motor Python.
 
 ---
 
 ## 🧩 Catálogo Completo de Componentes
 
-### Dashboard (`components/dashboard/`)
+### Arquitectura Modular por Funcionalidad (`components/`)
 
-| Componente | Archivo | Descripción |
-|---|---|---|
-| ChatPanel | [`ChatPanel.tsx`](file:///e:/AutoProd/components/dashboard/ChatPanel.tsx) | Panel de chat multi-provider con selección de modelo y workspace |
-| ConversationSidebar | [`ConversationSidebar.tsx`](file:///e:/AutoProd/components/dashboard/ConversationSidebar.tsx) | Sidebar con lista de conversaciones, búsqueda y acciones CRUD |
-| Launchpad | [`Launchpad.tsx`](file:///e:/AutoProd/components/dashboard/Launchpad.tsx) | Tarjetas de inicio rápido con PromptTemplates |
-| FilePreviewer | [`FilePreviewer.tsx`](file:///e:/AutoProd/components/dashboard/FilePreviewer.tsx) | Vista previa de archivos del workspace |
-| FileTree | [`FileTree.tsx`](file:///e:/AutoProd/components/dashboard/FileTree.tsx) | Árbol de archivos conectado al Motor Python |
-| MarkdownEditor | [`MarkdownEditor.tsx`](file:///e:/AutoProd/components/dashboard/MarkdownEditor.tsx) | Editor de Markdown con guardado remoto |
-| RightInspector | [`RightInspector.tsx`](file:///e:/AutoProd/components/dashboard/RightInspector.tsx) | Panel inspector derecho |
-| UserSettingsModal | [`UserSettingsModal.tsx`](file:///e:/AutoProd/components/dashboard/UserSettingsModal.tsx) | Modal de configuración: providers de IA y API keys |
-| WorkspaceModal | [`WorkspaceModal.tsx`](file:///e:/AutoProd/components/dashboard/WorkspaceModal.tsx) | Selector de workspace via explorador nativo del SO |
-| ConfirmDeleteModal | [`ConfirmDeleteModal.tsx`](file:///e:/AutoProd/components/dashboard/ConfirmDeleteModal.tsx) | Modal de confirmación para eliminaciones |
-| types | [`types.ts`](file:///e:/AutoProd/components/dashboard/types.ts) | Tipos TypeScript compartidos del dashboard |
+El frontend de AutoProd sigue una **Arquitectura Guiada por Características (Feature-Driven Architecture)**, donde cada módulo principal reside en su propia carpeta con su componente principal en la raíz:
+
+| Funcionalidad / Dominio | Carpeta | Componente Principal | Subcomponentes y Recursos |
+|---|---|---|---|
+| **Video Studio & Timeline** | `components/video-studio/` | [`VideoStudio.tsx`](file:///e:/autoprod/components/video-studio/VideoStudio.tsx) | `ProjectHub.tsx`, `timeline/TimelinePro.tsx`, `VideoSubtitlesStudio.tsx`, `VideoLooperStudio.tsx` |
+| **Chat & Orquestador** | `components/chat/` | [`ChatPanel.tsx`](file:///e:/autoprod/components/chat/ChatPanel.tsx) | `ConversationSidebar.tsx`, `InteractiveQuestionCard.tsx` |
+| **Explorador & Workspace** | `components/workspace/` | [`FileTree.tsx`](file:///e:/autoprod/components/workspace/FileTree.tsx) | `FilePreviewer.tsx`, `MarkdownEditor.tsx` |
+| **Estudio de Imágenes** | `components/image-studio/` | [`ImageStudio.tsx`](file:///e:/autoprod/components/image-studio/ImageStudio.tsx) | Generador de imágenes y miniaturas DALL-E |
+| **Text to Speech Studio** | `components/tts-studio/` | [`TextToSpeechStudio.tsx`](file:///e:/autoprod/components/tts-studio/TextToSpeechStudio.tsx) | Síntesis de voz multi-motor (Edge-TTS / OpenAI) |
+| **Biblioteca de Recursos** | `components/asset-library/` | [`AssetLibraryView.tsx`](file:///e:/autoprod/components/asset-library/AssetLibraryView.tsx) | Gestión de assets, almacenamiento y vaciado de caché |
+| **Cuentas Vinculadas** | `components/channels/` | [`LinkedAccountsView.tsx`](file:///e:/autoprod/components/channels/LinkedAccountsView.tsx) | Conexión OAuth 2.0 y sincronización de ContentHistory |
+| **Modales Globales** | `components/modals/` | — | `UserSettingsModal.tsx`, `SubscriptionPlansModal.tsx`, `WorkspaceModal.tsx`, `ConfirmDeleteModal.tsx`, `PreExecutionEstimateModal.tsx` |
+| **Shell & Dashboard Layout** | `components/dashboard/` | [`Launchpad.tsx`](file:///e:/autoprod/components/dashboard/Launchpad.tsx) | `ProfileDropdown.tsx`, `CreditCounter.tsx`, `RightInspector.tsx`, `types.ts` |
+
 
 ### Agentes (`components/agents/`)
 

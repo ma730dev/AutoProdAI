@@ -52,11 +52,12 @@ export async function GET(req: NextRequest) {
     // Calcular estadísticas de cuota y desglose por tipo
     const allUserAssets = await db.asset.findMany({
       where: { userId: user.id },
-      select: { type: true, sizeBytes: true, storageUrl: true, localPath: true }
+      select: { type: true, sizeBytes: true, storageUrl: true, localPath: true, isCache: true }
     });
 
     let cloudSizeBytes = 0;
     let localSizeBytes = 0;
+    let cacheSizeBytes = 0;
     const countByType: Record<string, number> = {
       ALL: allUserAssets.length,
       IMAGE: 0,
@@ -71,6 +72,7 @@ export async function GET(req: NextRequest) {
       const bytes = Number(a.sizeBytes) || 0;
       if (a.storageUrl) cloudSizeBytes += bytes;
       if (a.localPath) localSizeBytes += bytes;
+      if (a.isCache) cacheSizeBytes += bytes;
 
       if (a.type === 'THUMBNAIL' || a.type === 'IMAGE') {
         countByType.IMAGE = (countByType.IMAGE || 0) + 1;
@@ -93,6 +95,7 @@ export async function GET(req: NextRequest) {
         totalAssets: allUserAssets.length,
         cloudSizeBytes,
         localSizeBytes,
+        cacheSizeBytes,
         quotaBytes,
         quotaUsedPercent: Math.min(100, Math.round((cloudSizeBytes / quotaBytes) * 100)),
         countByType,
@@ -111,7 +114,7 @@ export async function POST(req: NextRequest) {
     const { user } = auth;
 
     const body = await req.json();
-    const { name, type, format, prompt, storageUrl, localPath, sizeBytes, channelId, metadata } = body;
+    const { name, type, format, prompt, storageUrl, localPath, isCache, sizeBytes, channelId, metadata } = body;
 
     if (!name || !type) {
       return NextResponse.json({ error: 'Nombre y tipo son obligatorios' }, { status: 400 });
@@ -127,6 +130,7 @@ export async function POST(req: NextRequest) {
         prompt: prompt || null,
         storageUrl: storageUrl || null,
         localPath: localPath || null,
+        isCache: Boolean(isCache),
         sizeBytes: BigInt(sizeBytes || 0),
         metadata: metadata || {},
       },
