@@ -79,6 +79,13 @@ flowchart TD
     - **Duración Real Inmediata:** Los clips se insertan con su duración real analizada por `ffprobe`, eliminando el antiguo límite provisional de 15 segundos.
     - **Búfer de Bucle Eficiente en FFmpeg:** Se sustituyó `size=30000` (que consumía 93 GB de RAM y limitaba a 16m) por cálculo exacto de fotogramas (`loop_frames = max(30, int(round(total_cuts_duration * 30)))`), permitiendo renderizar bucles de 1 a 3 horas sin saturación de memoria.
     - **Regla Adaptativa & Auto-Fit en Timeline:** La regla de tiempo limita dinámicamente las marcas a un máximo de 300 elementos DOM y aplica zoom automático inteligente (`handleFitToView`), evitando congelamientos en timelines de larga duración.
+10. **Función de Bucle Profesional y Bloque Amarillo Elástico (Estilo Premiere/CapCut):**
+    - **Pestaña «🔁 Loop» en la Bandeja de Medios:** Pestaña dedicada en el panel izquierdo que permite seleccionar cualquier video base, configurar duración inicial (fija o sincronizada a los audios de A1) e insertar directamente un bloque de bucle en la pista V1.
+    - **Identidad Visual Amarilla / Ámbar en Timeline:** Los cortes con bucle activo (`loopToAudio: true`) se renderizan con distintivo estilo amarillo oro (`bg-amber-950/70 border-amber-500/80 hover:border-amber-400 text-amber-100`) para diferenciarlos inmediatamente de clips estándar.
+    - **Muescas de Vuelta por GPU (Cero Nodos DOM):** Mediante `repeating-linear-gradient`, se dibujan líneas doradas en las costuras de cada ciclo sin crear elementos DOM adicionales, manteniendo un único `<div>` por clip sin importar si dura 10 segundos o 3 horas.
+    - **Manilla de Bucle en Línea de Tiempo (`🔁 Loop Handle`):** Tirador de arrastre en el borde derecho del bloque amarillo para estirar o encoger la duración del bucle de forma fluida y elástica.
+    - **Inspector Contextual con Ajuste Numérico:** Entrada numérica directa de duración en segundos, multiplicador de ciclos calculados (`↻ X.X vueltas`) y botón rápido de ajuste al audio de A1.
+    - **Pipeline Modular en Backend (FastAPI / FFmpeg):** Cada corte con `loop_to_duration` aplica `loop=loop=-1:size={loop_frames}:start=0,trim=start=0:end={loop_duration}` de forma aislada antes de concatenar, permitiendo secuencias mixtas (ej. Intro normal -> Bucle amarillo -> Outro normal).
 
 ---
 

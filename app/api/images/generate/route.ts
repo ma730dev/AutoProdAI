@@ -123,7 +123,6 @@ export async function POST(req: NextRequest) {
         prompt: prompt.trim(),
         n: 1,
         size,
-        response_format: 'b64_json',
         quality: 'standard',
       }),
     });
@@ -137,10 +136,22 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await openAiRes.json();
-    const b64Data = data.data?.[0]?.b64_json;
+    let b64Data = data.data?.[0]?.b64_json;
+    const imageUrl = data.data?.[0]?.url;
     const revisedPrompt = data.data?.[0]?.revised_prompt || prompt;
 
-    if (!b64Data) {
+    let imageBuffer: Buffer;
+    if (b64Data) {
+      imageBuffer = Buffer.from(b64Data, 'base64');
+    } else if (imageUrl) {
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) {
+        throw new Error('No se pudo descargar la imagen generada por OpenAI desde su URL temporal');
+      }
+      const arrayBuf = await imgRes.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuf);
+      b64Data = imageBuffer.toString('base64');
+    } else {
       return NextResponse.json({ error: 'No se recibieron datos de imagen de OpenAI' }, { status: 500 });
     }
 
@@ -176,7 +187,6 @@ export async function POST(req: NextRequest) {
       console.warn('Motor no disponible para guardado local directo:', e);
     }
 
-    const imageBuffer = Buffer.from(b64Data, 'base64');
     if (!sizeBytes) sizeBytes = imageBuffer.length;
 
     // 3. Subir a Supabase Storage
@@ -203,13 +213,36 @@ export async function POST(req: NextRequest) {
       console.warn('Could not upload to Supabase storage:', e);
     }
 
+    if (!storageUrl && imageUrl) {
+      storageUrl = imageUrl;
+    }
+
     // 4. Registrar en la base de datos (Prisma Asset)
+    let resolvedChannelId: string | null = null;
+    const isUuid = Boolean(channelId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(channelId));
+    if (isUuid) {
+      resolvedChannelId = channelId;
+    } else if (channelName || channelId) {
+      try {
+        const found = await db.channel.findFirst({
+          where: {
+            userId: user.id,
+            name: channelName || channelId,
+          },
+          select: { id: true },
+        });
+        if (found) resolvedChannelId = found.id;
+      } catch (e) {
+        console.warn('Could not resolve channel ID:', e);
+      }
+    }
+
     const asset = await db.asset.create({
       data: {
         userId: user.id,
-        channelId: channelId || null,
+        channelId: resolvedChannelId,
         name: fileName,
-        type: type || 'THUMBNAIL',
+        type: type || 'IMAGE',
         format: 'png',
         prompt: prompt.trim(),
         storageUrl: storageUrl || null,

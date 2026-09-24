@@ -36,6 +36,7 @@
 | **Calidad Anti-Pixelado H.264 (CRF Puro + AQ-mode 3)** | `✅ HECHO` | Perfiles CRF 12 (Master), 15 (Alta Nitidez) y 18 (Equilibrado) con `aq-mode=3` para fondos oscuros espaciales y partículas. |
 | **Aceleración por Hardware GPU** | `✅ HECHO` | Detección y uso automático de encoders por hardware (`h264_nvenc` en NVIDIA, `h264_videotoolbox` en Apple Silicon, fallback a `libx264`). |
 | **Audio Silence Fallback para Clips Silenciosos** | `✅ HECHO` | Generación automática de canal de silencio `anullsrc` para clips mudos para evitar desincronización en `concat`. |
+| **Función de Bucle Profesional y Bloque Amarillo Elástico** | `✅ HECHO` | Pestaña propia «🔁 Loop» en bandeja de medios, bloque amarillo elástico en V1 con manilla de arrastre, costuras visuales y bucle modular por clip sin duplicar DOM. |
 | **Transiciones Suaves Entre Cortes (Crossfade / Dissolve)** | `⏳ FALTANTE` | Filtro de encadenado `xfade` configurable entre cortes en la línea de tiempo. |
 | **Pista de Subtítulos Sincronizada (Faster-Whisper)** | `⏳ FALTANTE` | Carga de subtítulos `.ass` / `.srt` generados en FEAT-05 directamente a la pista de subtítulos del Timeline. |
 | **Render Batch / Cola Nocturna de Exportación** | `⏳ FALTANTE` | Encolar múltiples proyectos o secuencias para procesar consecutivamente sin bloquear la UI. |

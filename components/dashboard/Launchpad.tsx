@@ -40,150 +40,101 @@ export default function Launchpad({
         </p>
       </div>
 
-      {/* ── Las 5 Herramientas en Cuadrícula Homogénea ── */}
-      <div className="max-w-5xl w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 pb-12">
+      {/* ── Las 4 Herramientas en Cuadrícula ── */}
+      <div className="max-w-5xl w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pb-12">
 
-        {/* 1. Video Studio & Editor */}
+        {/* 1. Video Studio */}
         <button
           onClick={onSelectLooper}
-          className="h-56 text-left bg-[#131318]/90 hover:bg-[#181822] border border-zinc-800/80 hover:border-purple-500/70 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-purple-950/20 group cursor-pointer relative overflow-hidden"
+          className="h-48 text-left bg-[#131318]/90 hover:bg-[#181822] border border-zinc-800/80 hover:border-purple-500/70 rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-purple-950/20 group cursor-pointer"
         >
-          <div className="flex justify-between items-start">
-            <div className="h-10 w-10 rounded-xl bg-purple-600/15 border border-purple-500/30 flex items-center justify-center text-xl text-purple-300 group-hover:scale-110 transition-transform">
-              🎬
-            </div>
-            <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 font-bold uppercase tracking-wider">
-              {lang === 'es' ? 'Editor Pro' : 'Pro Editor'}
-            </span>
+          <div className="h-10 w-10 rounded-xl bg-purple-600/15 border border-purple-500/30 flex items-center justify-center text-xl text-purple-300 group-hover:scale-110 transition-transform">
+            🎬
           </div>
-          <div className="space-y-1 mt-auto">
-            <h3 className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors">
-              {lang === 'es' ? 'Video Studio' : 'Video Studio'}
+          <div className="space-y-1.5 mt-auto">
+            <h3 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors">
+              Video Studio
             </h3>
-            <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-3">
+            <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">
               {lang === 'es'
-                ? 'Montaje en pistas, recorte de clips, pistas de música, bucles y exportación acelerada.'
-                : 'Multi-track timeline, clip trimming, music tracks, loops and GPU-accelerated export.'}
+                ? 'Edición y montaje de clips, pistas de música, bucles y exportación.'
+                : 'Timeline editing, video clips, music tracks, loops and rendering.'}
             </p>
           </div>
-          <div className="pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[10px] text-zinc-500 group-hover:text-purple-300 font-medium transition-colors">
-            <span>{lang === 'es' ? 'Abrir estudio' : 'Open studio'}</span>
+          <div className="pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[11px] text-zinc-500 group-hover:text-purple-300 font-medium transition-colors">
+            <span>{lang === 'es' ? 'Abrir' : 'Open'}</span>
             <span className="transition-transform group-hover:translate-x-0.5">➔</span>
           </div>
         </button>
 
-        {/* 2. Locución & Voz en Off */}
+        {/* 2. Texto a Voz */}
         <button
-          onClick={onSelectTTS ? onSelectTTS : () => toast.info(lang === 'es' ? 'Locución Text-to-Speech' : 'Voiceover TTS')}
-          className="h-56 text-left bg-[#131318]/90 hover:bg-[#181822] border border-zinc-800/80 hover:border-purple-500/70 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-purple-950/20 group cursor-pointer relative overflow-hidden"
+          onClick={onSelectTTS ? onSelectTTS : () => toast.info(lang === 'es' ? 'Texto a Voz' : 'Text to Speech')}
+          className="h-48 text-left bg-[#131318]/90 hover:bg-[#181822] border border-zinc-800/80 hover:border-purple-500/70 rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-purple-950/20 group cursor-pointer"
         >
-          <div className="flex justify-between items-start">
-            <div className="h-10 w-10 rounded-xl bg-purple-600/15 border border-purple-500/30 flex items-center justify-center text-xl text-purple-300 group-hover:scale-110 transition-transform">
-              🎙️
-            </div>
-            <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25 font-bold uppercase tracking-wider">
-              {lang === 'es' ? 'Voz en Off' : 'Voiceover'}
-            </span>
+          <div className="h-10 w-10 rounded-xl bg-purple-600/15 border border-purple-500/30 flex items-center justify-center text-xl text-purple-300 group-hover:scale-110 transition-transform">
+            🎙️
           </div>
-          <div className="space-y-1 mt-auto">
-            <h3 className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors">
-              {lang === 'es' ? 'Locución TTS' : 'TTS Voiceover'}
+          <div className="space-y-1.5 mt-auto">
+            <h3 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors">
+              Texto a Voz
             </h3>
-            <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-3">
+            <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">
               {lang === 'es'
-                ? 'Convierte tus guiones en audio con síntesis vocal ilimitada o voces de alta fidelidad.'
-                : 'Convert your scripts into speech with unlimited local synthesis or high-fidelity voices.'}
+                ? 'Generación de locuciones y audio a partir de tus guiones.'
+                : 'Synthesize voiceovers and speech directly from your scripts.'}
             </p>
           </div>
-          <div className="pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[10px] text-zinc-500 group-hover:text-purple-300 font-medium transition-colors">
-            <span>{lang === 'es' ? 'Abrir estudio' : 'Open studio'}</span>
+          <div className="pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[11px] text-zinc-500 group-hover:text-purple-300 font-medium transition-colors">
+            <span>{lang === 'es' ? 'Abrir' : 'Open'}</span>
             <span className="transition-transform group-hover:translate-x-0.5">➔</span>
           </div>
         </button>
 
-        {/* 3. Subtítulos Automáticos */}
-        <button
-          onClick={onSelectSubtitles ? onSelectSubtitles : () => toast.info(lang === 'es' ? 'Subtitulado automático' : 'Auto subtitles')}
-          className="h-56 text-left bg-[#131318]/90 hover:bg-[#181822] border border-zinc-800/80 hover:border-emerald-500/70 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-950/20 group cursor-pointer relative overflow-hidden"
-        >
-          <div className="flex justify-between items-start">
-            <div className="h-10 w-10 rounded-xl bg-emerald-600/15 border border-emerald-500/30 flex items-center justify-center text-xl text-emerald-300 group-hover:scale-110 transition-transform">
-              🎧
-            </div>
-            <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 font-bold uppercase tracking-wider">
-              {lang === 'es' ? 'Whisper IA' : 'Whisper AI'}
-            </span>
-          </div>
-          <div className="space-y-1 mt-auto">
-            <h3 className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors">
-              {lang === 'es' ? 'Subtítulos' : 'Auto Subtitles'}
-            </h3>
-            <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-3">
-              {lang === 'es'
-                ? 'Transcripción sincronizada palabra por palabra con estilos dinámicos para tus videos.'
-                : 'Word-by-word synchronized captions with dynamic styles ready for your video projects.'}
-            </p>
-          </div>
-          <div className="pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[10px] text-zinc-500 group-hover:text-emerald-300 font-medium transition-colors">
-            <span>{lang === 'es' ? 'Abrir estudio' : 'Open studio'}</span>
-            <span className="transition-transform group-hover:translate-x-0.5">➔</span>
-          </div>
-        </button>
-
-        {/* 4. Portadas y Miniaturas */}
+        {/* 3. Imagenes */}
         <button
           onClick={onSelectImages}
-          className="h-56 text-left bg-[#131318]/90 hover:bg-[#181822] border border-zinc-800/80 hover:border-indigo-500/70 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-950/20 group cursor-pointer relative overflow-hidden"
+          className="h-48 text-left bg-[#131318]/90 hover:bg-[#181822] border border-zinc-800/80 hover:border-indigo-500/70 rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-950/20 group cursor-pointer"
         >
-          <div className="flex justify-between items-start">
-            <div className="h-10 w-10 rounded-xl bg-indigo-600/15 border border-indigo-500/30 flex items-center justify-center text-xl text-indigo-300 group-hover:scale-110 transition-transform">
-              🎯
-            </div>
-            <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/25 font-bold uppercase tracking-wider">
-              {lang === 'es' ? 'Alto CTR' : 'High CTR'}
-            </span>
+          <div className="h-10 w-10 rounded-xl bg-indigo-600/15 border border-indigo-500/30 flex items-center justify-center text-xl text-indigo-300 group-hover:scale-110 transition-transform">
+            🎯
           </div>
-          <div className="space-y-1 mt-auto">
-            <h3 className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors">
-              {lang === 'es' ? 'Miniaturas' : 'Thumbnails'}
+          <div className="space-y-1.5 mt-auto">
+            <h3 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors">
+              Imagenes
             </h3>
-            <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-3">
+            <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">
               {lang === 'es'
-                ? 'Diseña portadas llamativas en formato horizontal 16:9 o vertical 9:16 Shorts.'
-                : 'Design eye-catching thumbnails in horizontal 16:9 or vertical 9:16 Shorts format.'}
+                ? 'Diseño y generación de miniaturas y portadas para tus canales.'
+                : 'Design and generation of thumbnails and covers for your channels.'}
             </p>
           </div>
-          <div className="pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[10px] text-zinc-500 group-hover:text-indigo-300 font-medium transition-colors">
-            <span>{lang === 'es' ? 'Abrir estudio' : 'Open studio'}</span>
+          <div className="pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[11px] text-zinc-500 group-hover:text-indigo-300 font-medium transition-colors">
+            <span>{lang === 'es' ? 'Abrir' : 'Open'}</span>
             <span className="transition-transform group-hover:translate-x-0.5">➔</span>
           </div>
         </button>
 
-        {/* 5. Biblioteca de Recursos */}
+        {/* 4. Biblioteca */}
         <button
           onClick={onSelectAssets}
-          className="h-56 text-left bg-[#131318]/90 hover:bg-[#181822] border border-zinc-800/80 hover:border-cyan-500/70 rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-950/20 group cursor-pointer relative overflow-hidden"
+          className="h-48 text-left bg-[#131318]/90 hover:bg-[#181822] border border-zinc-800/80 hover:border-cyan-500/70 rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-950/20 group cursor-pointer"
         >
-          <div className="flex justify-between items-start">
-            <div className="h-10 w-10 rounded-xl bg-cyan-600/15 border border-cyan-500/30 flex items-center justify-center text-xl text-cyan-300 group-hover:scale-110 transition-transform">
-              🗂️
-            </div>
-            <span className="text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/25 font-bold uppercase tracking-wider">
-              {lang === 'es' ? 'Media Hub' : 'Media Hub'}
-            </span>
+          <div className="h-10 w-10 rounded-xl bg-cyan-600/15 border border-cyan-500/30 flex items-center justify-center text-xl text-cyan-300 group-hover:scale-110 transition-transform">
+            🗂️
           </div>
-          <div className="space-y-1 mt-auto">
-            <h3 className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors">
-              {lang === 'es' ? 'Biblioteca' : 'Media Library'}
+          <div className="space-y-1.5 mt-auto">
+            <h3 className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors">
+              Biblioteca
             </h3>
-            <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-3">
+            <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">
               {lang === 'es'
-                ? 'Organiza y previsualiza tus pistas de música, efectos de sonido y metraje de cada canal.'
-                : 'Keep and preview your music tracks, sound effects, and background clips by channel.'}
+                ? 'Organización de pistas de música, efectos de sonido y recursos.'
+                : 'Media asset library for music tracks, sound effects and footage.'}
             </p>
           </div>
-          <div className="pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[10px] text-zinc-500 group-hover:text-cyan-300 font-medium transition-colors">
-            <span>{lang === 'es' ? 'Abrir estudio' : 'Open studio'}</span>
+          <div className="pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[11px] text-zinc-500 group-hover:text-cyan-300 font-medium transition-colors">
+            <span>{lang === 'es' ? 'Abrir' : 'Open'}</span>
             <span className="transition-transform group-hover:translate-x-0.5">➔</span>
           </div>
         </button>

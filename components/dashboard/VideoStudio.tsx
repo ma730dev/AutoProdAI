@@ -137,9 +137,13 @@ export default function VideoStudio({
   onRefreshWorkspace,
   initialMediaTab,
 }: VideoStudioProps) {
-  // ── PESTAÑA ACTIVA EN MEDIA & TOOL BIN (IZQUIERDA) ──
+  // ── PESTAÑA ACTIVA EN MEDIA BIN (IZQUIERDA: SOLO MEDIOS) ──
   const [activeMediaTab, setActiveMediaTab] = useState<'clips' | 'audio' | 'text' | 'subtitles'>(initialMediaTab || 'clips');
   const [dismissedSyncBar, setDismissedSyncBar] = useState<boolean>(false);
+
+  // ── ESTADOS DEL ÁRBOL EN INSPECTOR DE ELEMENTOS (-Video -> ------Looper) ──
+  const [isVideoTreeOpen, setIsVideoTreeOpen] = useState<boolean>(true);
+  const [isLooperTreeOpen, setIsLooperTreeOpen] = useState<boolean>(true);
 
   useEffect(() => {
     if (initialMediaTab) {
@@ -215,14 +219,14 @@ export default function VideoStudio({
     initialPanY: 0,
   });
 
-  // ── ESTADO DEL SUB-MÓDULO: HERRAMIENTA LOOPER EXPRESS ──
+  // ── ESTADO DEL SUB-MÓDULO: HERRAMIENTA LOOPER EN INSPECTOR (-Video -> ------Looper) ──
   const [looperSelectedClip, setLooperSelectedClip] = useState<string>('');
-  const [looperDurationMode, setLooperDurationMode] = useState<'custom' | 'audio_folder'>('custom');
-  const [looperCustomMinutes, setLooperCustomMinutes] = useState<number>(30);
-  const [looperAudioFolder, setLooperAudioFolder] = useState<string>('');
-  const [looperTotalAudioSeconds, setLooperTotalAudioSeconds] = useState<number>(0);
-  const [looperTotalAudioFormatted, setLooperTotalAudioFormatted] = useState<string>('0s');
-  const [isScanningLooperAudio, setIsScanningLooperAudio] = useState<boolean>(false);
+  const [looperDurationMode, setLooperDurationMode] = useState<'time' | 'songs'>('time');
+  const [looperCustomMinutes, setLooperCustomMinutes] = useState<number>(15);
+  const [looperCustomSeconds, setLooperCustomSeconds] = useState<number>(0);
+  const [looperSongSelectionMode, setLooperSongSelectionMode] = useState<'track_a1' | 'choose_songs'>('choose_songs');
+  const [looperSelectedSongPaths, setLooperSelectedSongPaths] = useState<string[]>([]);
+  const [looperAddSongsToTimeline, setLooperAddSongsToTimeline] = useState<boolean>(true);
 
   // Cargar carpetas del workspace al montar
   useEffect(() => {
@@ -378,9 +382,12 @@ export default function VideoStudio({
     toast.success(lang === 'es' ? 'Clip duplicado en el timeline' : 'Clip duplicated');
   };
 
-  // Duración acumulada de la secuencia de video en V1
+  // Duración acumulada de la secuencia de video en V1 (considerando bucles individuales elásticos)
   const sequenceDuration = useMemo(() => {
-    return timelineCuts.reduce((acc, c) => acc + (c.duration || 0), 0);
+    return timelineCuts.reduce((acc, c) => {
+      const eff = (c.loopToAudio && c.loopDuration && c.loopDuration > 0) ? c.loopDuration : c.duration;
+      return acc + (eff || 0);
+    }, 0);
   }, [timelineCuts]);
 
   // Si algún clip tiene activo el bucle virtual
@@ -403,17 +410,8 @@ export default function VideoStudio({
   // Duración total efectiva del timeline (Modelo Premiere: elemento más lejano en cualquier pista)
   const totalTimelineDuration = useMemo(() => {
     const targetBounds = Math.max(sequenceDuration, maxAudioEnd, maxOverlayEnd);
-    if (isLoopActive) {
-      if (maxAudioEnd > 0) return Math.max(maxAudioEnd, sequenceDuration, maxOverlayEnd);
-      if (looperDurationMode === 'audio_folder' && looperTotalAudioSeconds > 0) {
-        return looperTotalAudioSeconds;
-      }
-      if (looperCustomMinutes > 0 && sequenceDuration > 0) {
-        return Math.max(looperCustomMinutes * 60, sequenceDuration, maxOverlayEnd);
-      }
-    }
     return targetBounds > 0 ? targetBounds : 15;
-  }, [isLoopActive, sequenceDuration, maxAudioEnd, maxOverlayEnd, looperDurationMode, looperTotalAudioSeconds, looperCustomMinutes]);
+  }, [sequenceDuration, maxAudioEnd, maxOverlayEnd]);
 
   // Inspeccionar metadatos de un video para anexarlo a la bandeja
   const inspectAndAttachMeta = async (filePath: string, fileName: string) => {
@@ -465,8 +463,8 @@ export default function VideoStudio({
     }
   };
 
-  // Añadir clip a la línea de tiempo (con duración real si ya fue inspeccionado)
-  const handleAddClipToTimeline = (filePath: string, fileName: string, loopToAudio: boolean = false) => {
+  // Añadir clip a la línea de tiempo (con duración real y soporte de bucle elástico)
+  const handleAddClipToTimeline = (filePath: string, fileName: string, loopToAudio: boolean = false, loopDuration?: number) => {
     autoDetectTargetFolder(filePath);
     const existing = projectClips.find(p => p.path === filePath || p.name === fileName || p.path.replace(/\\/g, '/') === filePath.replace(/\\/g, '/'));
     const initialDuration = existing?.duration && existing.duration > 0 ? existing.duration : 15;
@@ -479,11 +477,14 @@ export default function VideoStudio({
       endTime: initialDuration,
       duration: initialDuration,
       loopToAudio,
+      loopDuration: loopToAudio ? (loopDuration || Math.max(initialDuration, Number((initialDuration * 3).toFixed(1)))) : undefined,
     };
     setTimelineCuts(prev => [...prev, newCut]);
     setSelectedCutId(newCut.id);
     inspectAndAttachMeta(filePath, fileName);
-    toast.success(lang === 'es' ? `Clip añadido: ${fileName}` : `Clip added: ${fileName}`);
+    toast.success(loopToAudio
+      ? (lang === 'es' ? `Bucle amarillo añadido: ${fileName}` : `Yellow loop added: ${fileName}`)
+      : (lang === 'es' ? `Clip añadido: ${fileName}` : `Clip added: ${fileName}`));
   };
 
   // Subir videos desde explorador de archivos del PC (Streaming Directo con fallback)
@@ -917,30 +918,29 @@ export default function VideoStudio({
   // ── RESOLVER CLIP ACTIVO PARA PREVISUALIZACIÓN DE VIDEO DOM ──
   const resolveClipAtTime = useCallback((time: number) => {
     if (timelineCuts.length === 0) return null;
-    const cutsDuration = timelineCuts.reduce((acc, c) => acc + c.duration, 0);
-    if (cutsDuration <= 0) return null;
-
-    // Si el bucle no está activo y el tiempo supera los clips de video en V1, retornar null (hueco / black slug)
-    if (!isLoopActive && time >= cutsDuration) {
-      return null;
-    }
-
-    const effectiveTime = isLoopActive && cutsDuration > 0 ? (time % cutsDuration) : time;
     let accumulated = 0;
 
     for (let i = 0; i < timelineCuts.length; i++) {
       const cut = timelineCuts[i];
-      const cutEnd = accumulated + cut.duration;
-      if (effectiveTime >= accumulated && effectiveTime < cutEnd) {
-        const elapsed = effectiveTime - accumulated;
+      const effectiveCutDur = (cut.loopToAudio && cut.loopDuration && cut.loopDuration > 0)
+        ? cut.loopDuration
+        : cut.duration;
+      const cutEnd = accumulated + effectiveCutDur;
+
+      if (time >= accumulated && time < cutEnd) {
+        const elapsed = time - accumulated;
+        const sourceCycleDur = cut.duration > 0 ? cut.duration : 15;
+        // Si el corte individual tiene bucle activo, calcular residuo del ciclo
+        const cycleElapsed = cut.loopToAudio ? (elapsed % sourceCycleDur) : elapsed;
         const offsetInClip = cut.isReversed
-          ? Math.max(cut.startTime, cut.endTime - elapsed)
-          : (cut.startTime + elapsed);
+          ? Math.max(cut.startTime, cut.endTime - cycleElapsed)
+          : (cut.startTime + cycleElapsed);
         return {
           cut,
           index: i,
           offsetInClip,
           accumulatedStart: accumulated,
+          effectiveCutDur,
           isLast: i === timelineCuts.length - 1,
         };
       }
@@ -948,7 +948,7 @@ export default function VideoStudio({
     }
 
     return null;
-  }, [timelineCuts, isLoopActive]);
+  }, [timelineCuts]);
 
   const currentResolvedClip = useMemo(() => {
     return resolveClipAtTime(playheadTime);
@@ -1227,7 +1227,9 @@ export default function VideoStudio({
           start_time: c.startTime,
           end_time: c.endTime,
           duration: c.duration,
-          loop_to_duration: c.loopToAudio ? totalTimelineDuration : null,
+          loop_to_duration: (c.loopToAudio && c.loopDuration && c.loopDuration > 0)
+            ? c.loopDuration
+            : (c.loopToAudio ? totalTimelineDuration : null),
           is_reversed: !!c.isReversed,
         })),
         overlays: overlays.map(o => ({
@@ -1303,58 +1305,135 @@ export default function VideoStudio({
     }
   };
 
-  // ── EJECUCIÓN EXPRESS DE LA HERRAMIENTA LOOPER ──
-  const handleExecuteLooperExpress = async () => {
-    if (!looperSelectedClip) {
-      toast.error(lang === 'es' ? 'Selecciona un clip para el bucle.' : 'Select a clip for the loop.');
+  // ── HERRAMIENTAS Y CÁLCULOS DEL ÁRBOL LOOPER (-Video -> ------Looper) ──
+  const availableClipsForLoop = useMemo(() => {
+    if (projectClips.length > 0) return projectClips;
+    return timelineCuts.map(c => ({
+      name: c.name,
+      path: c.clipPath,
+      duration: c.duration,
+    }));
+  }, [projectClips, timelineCuts]);
+
+  const effectiveLooperClipPath = useMemo(() => {
+    if (looperSelectedClip && availableClipsForLoop.some(c => c.path === looperSelectedClip)) {
+      return looperSelectedClip;
+    }
+    const currentSelectedCut = timelineCuts.find(c => c.id === selectedCutId);
+    if (currentSelectedCut) return currentSelectedCut.clipPath;
+    if (availableClipsForLoop.length > 0) return availableClipsForLoop[0].path;
+    return '';
+  }, [looperSelectedClip, availableClipsForLoop, timelineCuts, selectedCutId]);
+
+  const targetLoopClip = useMemo(() => {
+    return availableClipsForLoop.find(c => c.path === effectiveLooperClipPath);
+  }, [availableClipsForLoop, effectiveLooperClipPath]);
+
+  const targetLoopClipDuration = useMemo(() => {
+    if (!targetLoopClip) return 15;
+    if (targetLoopClip.duration && targetLoopClip.duration > 0) return targetLoopClip.duration;
+    const matchTimeline = timelineCuts.find(c => c.clipPath === targetLoopClip.path);
+    return matchTimeline?.duration || 15;
+  }, [targetLoopClip, timelineCuts]);
+
+  const calculatedLoopDuration = useMemo(() => {
+    if (looperDurationMode === 'time') {
+      const mins = Math.max(0, looperCustomMinutes || 0);
+      const secs = Math.max(0, looperCustomSeconds || 0);
+      const total = mins * 60 + secs;
+      return total > 0 ? total : 60;
+    } else {
+      // Modo 'songs'
+      if (looperSongSelectionMode === 'track_a1') {
+        return maxAudioEnd > 0 ? maxAudioEnd : 180;
+      } else {
+        if (looperSelectedSongPaths.length > 0) {
+          const sum = projectAudioList
+            .filter(s => looperSelectedSongPaths.includes(s.path))
+            .reduce((acc, s) => acc + (s.duration_seconds || 0), 0);
+          return sum > 0 ? sum : 180;
+        }
+        if (maxAudioEnd > 0) return maxAudioEnd;
+        if (projectAudioList.length > 0) {
+          return projectAudioList.reduce((acc, s) => acc + (s.duration_seconds || 0), 0) || 180;
+        }
+        return 180;
+      }
+    }
+  }, [looperDurationMode, looperCustomMinutes, looperCustomSeconds, looperSongSelectionMode, looperSelectedSongPaths, maxAudioEnd, projectAudioList]);
+
+  const calculatedLoopCycles = useMemo(() => {
+    if (targetLoopClipDuration <= 0) return 1;
+    return Number((calculatedLoopDuration / targetLoopClipDuration).toFixed(1));
+  }, [calculatedLoopDuration, targetLoopClipDuration]);
+
+  // Aplicar bucle amarillo al timeline
+  const handleApplyLooper = () => {
+    if (!targetLoopClip) {
+      toast.error(lang === 'es' ? 'Selecciona un clip del proyecto primero' : 'Select a project clip first');
       return;
     }
 
-    setIsRenderingFull(true);
-    setRenderProgress(10);
-    setRenderMessage(lang === 'es' ? 'Construyendo bucle express con Stream Copy...' : 'Building express loop...');
+    // Si se seleccionaron canciones del proyecto y se solicitó colocarlas en A1
+    if (looperDurationMode === 'songs' && looperSongSelectionMode === 'choose_songs' && looperAddSongsToTimeline) {
+      const songsToAdd = projectAudioList.filter(s => looperSelectedSongPaths.includes(s.path));
+      if (songsToAdd.length > 0) {
+        let currentAudioEnd = audioCuts.length > 0
+          ? Math.max(...audioCuts.map(a => (a.startTime || 0) + (a.duration || 0)))
+          : 0;
 
-    try {
-      const res = await ControladorClient.createVideoLoop({
-        videoPaths: [looperSelectedClip],
-        durationMode: looperDurationMode,
-        targetDurationSeconds: looperDurationMode === 'audio_folder' ? looperTotalAudioSeconds : looperCustomMinutes * 60,
-        audioFolderPath: looperDurationMode === 'audio_folder' ? looperAudioFolder : null,
-        resolution: 'original',
-        quality: 'high',
-        isPreview: false,
-        muteOriginalAudio,
-        outputFolderPath: targetFolder || null,
-        outputFilename: `loop_${outputFilename}`,
-      });
-
-      const jobId = res.job_id;
-      const interval = setInterval(async () => {
-        try {
-          const statusData = await ControladorClient.getVideoLoopStatus(jobId);
-          setRenderProgress(statusData.progress || 0);
-          setRenderMessage(statusData.message || '');
-
-          if (statusData.status === 'completed' && statusData.output_path) {
-            clearInterval(interval);
-            setIsRenderingFull(false);
-            setCompletedOutputPath(statusData.output_path);
-            toast.success(lang === 'es' ? '¡Bucle express generado con éxito!' : 'Loop created successfully!');
-            if (onRefreshWorkspace) onRefreshWorkspace();
-          } else if (statusData.status === 'error') {
-            clearInterval(interval);
-            setIsRenderingFull(false);
-            toast.error(statusData.error || 'Error en bucle');
+        const newCuts: TimelineAudioCut[] = [];
+        for (const song of songsToAdd) {
+          const alreadyPresent = audioCuts.some(a => a.audioPath === song.path);
+          if (!alreadyPresent) {
+            const songDur = song.duration_seconds && song.duration_seconds > 0 ? song.duration_seconds : 180;
+            newCuts.push({
+              id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              audioPath: song.path,
+              name: song.name,
+              startTime: Number(currentAudioEnd.toFixed(1)),
+              duration: Number(songDur.toFixed(1)),
+              volume: 1,
+            });
+            currentAudioEnd += songDur;
           }
-        } catch {
-          clearInterval(interval);
-          setIsRenderingFull(false);
         }
-      }, 1200);
-    } catch (err: any) {
-      setIsRenderingFull(false);
-      toast.error(err.message || 'Error al generar bucle express');
+        if (newCuts.length > 0) {
+          setAudioCuts(prev => [...prev, ...newCuts]);
+          if (!musicAudioPath && newCuts[0]) setMusicAudioPath(newCuts[0].audioPath);
+        }
+      }
     }
+
+    // Actualizar corte existente o añadir nuevo al timeline
+    const currentSelectedCut = timelineCuts.find(c => c.id === selectedCutId);
+    const existingCutIndex = currentSelectedCut && currentSelectedCut.clipPath === targetLoopClip.path
+      ? timelineCuts.findIndex(c => c.id === currentSelectedCut.id)
+      : timelineCuts.findIndex(c => c.clipPath === targetLoopClip.path);
+
+    if (existingCutIndex !== -1) {
+      const cutIdToUpdate = timelineCuts[existingCutIndex].id;
+      setTimelineCuts(prev => prev.map(c => c.id === cutIdToUpdate ? {
+        ...c,
+        loopToAudio: true,
+        loopDuration: calculatedLoopDuration,
+      } : c));
+      setSelectedCutId(cutIdToUpdate);
+      toast.success(lang === 'es'
+        ? `Bucle amarillo activado: ${targetLoopClip.name} (${Math.floor(calculatedLoopDuration / 60)}m ${(calculatedLoopDuration % 60).toFixed(0)}s, ${calculatedLoopCycles} vueltas)`
+        : `Yellow loop enabled: ${targetLoopClip.name} (${Math.floor(calculatedLoopDuration / 60)}m ${(calculatedLoopDuration % 60).toFixed(0)}s)`);
+    } else {
+      handleAddClipToTimeline(targetLoopClip.path, targetLoopClip.name, true, calculatedLoopDuration);
+    }
+  };
+
+  const handleRemoveLoopFromCut = (cutId: string) => {
+    setTimelineCuts(prev => prev.map(c => c.id === cutId ? {
+      ...c,
+      loopToAudio: false,
+      loopDuration: undefined,
+    } : c));
+    toast.info(lang === 'es' ? 'Bucle desactivado (clip restaurado a duración normal)' : 'Loop removed');
   };
 
   const selectedCut = timelineCuts.find(c => c.id === selectedCutId);
@@ -1413,32 +1492,6 @@ export default function VideoStudio({
             </select>
           </div>
 
-          {/* Botón Subtitular con IA */}
-          <button
-            onClick={() => {
-              setActiveMediaTab('subtitles');
-              if (subtitles.length === 0) {
-                handleGenerateSubtitles();
-              }
-            }}
-            disabled={isGeneratingSubtitles}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 transition-all cursor-pointer disabled:opacity-50"
-            title="Generar subtítulos automáticos con Whisper IA"
-          >
-            <span>🎧</span>
-            <span>{isGeneratingSubtitles ? (lang === 'es' ? 'Transcribiendo...' : 'Transcribing...') : (lang === 'es' ? 'Subtitular IA' : 'AI Subtitles')}</span>
-          </button>
-
-          {/* Botón Previsualizar Rápido (30s) */}
-          <button
-            onClick={() => handleExecuteRender(true)}
-            disabled={isRenderingPreview || isRenderingFull}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 transition-all cursor-pointer disabled:opacity-50"
-          >
-            <span>▶️</span>
-            <span>{isRenderingPreview ? 'Generando...' : (lang === 'es' ? 'Previsualizar' : 'Preview')}</span>
-          </button>
-
           {/* Botón Exportar Video Final */}
           <button
             onClick={() => setIsExportModalOpen(true)}
@@ -1474,7 +1527,7 @@ export default function VideoStudio({
 
         {/* ── PANEL IZQUIERDO: MEDIA & TOOLS BIN (3 COLS) ──────────────────── */}
         <div className="lg:col-span-3 bg-[#0e0e13] border border-zinc-800/80 rounded-2xl p-2.5 flex flex-col gap-2.5 overflow-hidden">
-          {/* Tabs de Navegación de Recursos */}
+          {/* Tabs de Navegación de Recursos (Solo Medios) */}
           <div className="grid grid-cols-4 gap-1 p-0.5 bg-zinc-950 rounded-xl border border-zinc-800/80 text-[10px] font-semibold text-zinc-400">
             <button
               onClick={() => setActiveMediaTab('clips')}
@@ -2319,12 +2372,16 @@ export default function VideoStudio({
                 </span>
               </div>
 
-              {/* Toggle de Bucle en el Clip */}
-              <div className="pt-2 border-t border-zinc-800/60 flex flex-col gap-1.5">
+              {/* Función de Bucle en el Clip (Bloque Amarillo) */}
+              <div className={`p-2.5 rounded-xl border flex flex-col gap-2 transition-all ${
+                selectedCut.loopToAudio
+                  ? 'bg-amber-950/40 border-amber-500/60 text-amber-100 shadow-sm'
+                  : 'border-zinc-800/60 bg-zinc-950/30'
+              }`}>
                 <label className="flex items-center justify-between text-xs cursor-pointer select-none">
-                  <span className="font-bold text-amber-200 flex items-center gap-1.5">
+                  <span className={`font-bold flex items-center gap-1.5 ${selectedCut.loopToAudio ? 'text-amber-300' : 'text-zinc-300'}`}>
                     <span>🔁</span>
-                    <span>Bucle Infinito (Loop)</span>
+                    <span>{lang === 'es' ? 'Función de Bucle (Loop)' : 'Loop Function'}</span>
                   </span>
                   <input
                     type="checkbox"
@@ -2333,15 +2390,69 @@ export default function VideoStudio({
                       const checked = e.target.checked;
                       setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
                         ...c,
-                        loopToAudio: checked
+                        loopToAudio: checked,
+                        loopDuration: checked ? (c.loopDuration || Math.max(c.duration, Number((c.duration * 3).toFixed(1)))) : undefined
                       } : c));
                     }}
                     className="rounded accent-amber-500 cursor-pointer"
                   />
                 </label>
-                <span className="text-[10px] text-zinc-400 leading-tight">
-                  Repite continuamente este clip hasta completar la duración de la música o proyecto.
-                </span>
+
+                {selectedCut.loopToAudio ? (
+                  <div className="flex flex-col gap-2 pt-1 border-t border-amber-800/40">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-amber-200/80 font-medium">{lang === 'es' ? 'Duración en Timeline:' : 'Timeline Duration:'}</span>
+                      <div className="flex items-center gap-1 font-mono">
+                        <input
+                          type="number"
+                          min={selectedCut.duration || 1}
+                          max={36000}
+                          step={1}
+                          value={Math.round((selectedCut.loopDuration || selectedCut.duration * 3))}
+                          onChange={(e) => {
+                            const val = Math.max(selectedCut.duration || 1, parseFloat(e.target.value) || 1);
+                            setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
+                              ...c,
+                              loopDuration: val
+                            } : c));
+                          }}
+                          className="w-16 bg-zinc-900 border border-amber-500/50 rounded px-1.5 py-0.5 text-right font-bold text-amber-300 focus:outline-none focus:border-amber-400"
+                        />
+                        <span className="text-[10px] text-amber-400/80">s</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] font-mono text-amber-300/80 bg-amber-950/60 px-2 py-1 rounded border border-amber-600/30">
+                      <span>{lang === 'es' ? 'Ciclos estimados:' : 'Estimated cycles:'}</span>
+                      <span className="font-bold text-amber-200">
+                        ↻ {((selectedCut.loopDuration || selectedCut.duration * 3) / (selectedCut.duration || 1)).toFixed(1)} vueltas
+                      </span>
+                    </div>
+
+                    {maxAudioEnd > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? {
+                            ...c,
+                            loopDuration: maxAudioEnd
+                          } : c));
+                          toast.success(lang === 'es' ? 'Bucle igualado a la duración del audio' : 'Loop matched to audio duration');
+                        }}
+                        className="text-[10px] py-1 px-2 rounded bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 font-semibold cursor-pointer transition-all flex items-center justify-center gap-1"
+                      >
+                        <span>🎵</span>
+                        <span>{lang === 'es' ? `Ajustar a Audio A1 (${maxAudioEnd.toFixed(1)}s)` : `Match A1 Audio (${maxAudioEnd.toFixed(1)}s)`}</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-zinc-400 leading-tight">
+                    {lang === 'es'
+                      ? 'Actívalo para convertir este clip en un bloque amarillo extensible en la línea de tiempo.'
+                      : 'Enable to turn this clip into an extensible yellow loop block on the timeline.'}
+                  </span>
+                )}
               </div>
 
               {/* Toggle de Invertir Video (Reverse) */}

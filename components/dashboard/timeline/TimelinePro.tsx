@@ -11,6 +11,7 @@ export interface TimelineCut {
   endTime: number;
   duration: number;
   loopToAudio: boolean;
+  loopDuration?: number;
   panX?: number;
   panY?: number;
   zoom?: number;
@@ -152,6 +153,13 @@ export default function TimelinePro({
     originalStart: number;
     originalEnd: number;
     originalDuration: number;
+  } | null>(null);
+  // ── Estirar/Encoger Duración de Bucle con Manilla Amarilla ──
+  const [trimmingLoopState, setTrimmingLoopState] = useState<{
+    cutId: string;
+    startX: number;
+    originalLoopDuration: number;
+    baseDuration: number;
   } | null>(null);
   const [draggedCutIndex, setDraggedCutIndex] = useState<number | null>(null);
 
@@ -301,7 +309,17 @@ export default function TimelinePro({
   }, [clipboard, cuts, overlays, audioCuts, playheadTime, onUpdateCuts, onUpdateOverlays, onUpdateAudioCuts, onSelectCut, onSelectOverlay, onSelectAudioCut]);
 
   const handleToggleLoop = useCallback((cutId: string) => {
-    onUpdateCuts(cuts.map(c => c.id === cutId ? { ...c, loopToAudio: !c.loopToAudio } : c));
+    onUpdateCuts(cuts.map(c => {
+      if (c.id === cutId) {
+        const nextLoop = !c.loopToAudio;
+        return {
+          ...c,
+          loopToAudio: nextLoop,
+          loopDuration: nextLoop ? (c.loopDuration || Math.max(c.duration, Number((c.duration * 3).toFixed(1)))) : undefined
+        };
+      }
+      return c;
+    }));
     setContextMenu(null);
   }, [cuts, onUpdateCuts]);
 
@@ -481,18 +499,33 @@ export default function TimelinePro({
           );
         }
       }
+
+      // Estirar/Encoger Manilla de Bucle Amarilla (Loop Handle)
+      if (trimmingLoopState) {
+        const deltaX = e.clientX - trimmingLoopState.startX;
+        const deltaTime = deltaX / pixelsPerSecond;
+        const newLoopDur = Math.max(trimmingLoopState.baseDuration, trimmingLoopState.originalLoopDuration + deltaTime);
+        onUpdateCuts(
+          cuts.map(c => c.id === trimmingLoopState.cutId ? {
+            ...c,
+            loopToAudio: true,
+            loopDuration: Number(newLoopDur.toFixed(2)),
+          } : c)
+        );
+      }
     };
 
     const handleMouseUp = () => {
       setIsDraggingPlayhead(false);
       setDraggingOverlayId(null);
       setTrimmingState(null);
+      setTrimmingLoopState(null);
       setTrimmingOverlayState(null);
       setDraggingAudioId(null);
       setTrimmingAudioState(null);
     };
 
-    if (isDraggingPlayhead || draggingOverlayId || trimmingState || trimmingOverlayState || draggingAudioId || trimmingAudioState) {
+    if (isDraggingPlayhead || draggingOverlayId || trimmingState || trimmingLoopState || trimmingOverlayState || draggingAudioId || trimmingAudioState) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
@@ -501,7 +534,7 @@ export default function TimelinePro({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDraggingPlayhead, draggingOverlayId, trimmingState, trimmingOverlayState, draggingAudioId, trimmingAudioState, pixelsPerSecond, effectiveDuration, isSnapping, cuts, dragStartX, overlayStartOrigin, overlays, dragAudioStartX, audioStartOrigin, audioCuts, onSeek, onUpdateOverlays, onUpdateCuts, onUpdateAudioCuts]);
+  }, [isDraggingPlayhead, draggingOverlayId, trimmingState, trimmingLoopState, trimmingOverlayState, draggingAudioId, trimmingAudioState, pixelsPerSecond, effectiveDuration, isSnapping, cuts, dragStartX, overlayStartOrigin, overlays, dragAudioStartX, audioStartOrigin, audioCuts, onSeek, onUpdateOverlays, onUpdateCuts, onUpdateAudioCuts]);
 
   // Generar marcas adaptativas de la regla de tiempo (estilo Premiere / DaVinci)
   const rulerTicks = useMemo(() => {
@@ -787,12 +820,18 @@ export default function TimelinePro({
                 </div>
               ) : (
                 cuts.map((cut, idx) => {
-                  const cutWidth = Math.max(cut.duration * pixelsPerSecond, 2);
+                  const isLooped = !!cut.loopToAudio;
+                  const effectiveCutDuration = (isLooped && cut.loopDuration && cut.loopDuration > 0)
+                    ? cut.loopDuration
+                    : cut.duration;
+                  const cutWidth = Math.max(effectiveCutDuration * pixelsPerSecond, 2);
+                  const cycleWidth = Math.max(cut.duration * pixelsPerSecond, 1);
                   const isSelected = selectedCutId === cut.id;
+                  const loopCycles = cut.duration > 0 ? (effectiveCutDuration / cut.duration) : 1;
                   return (
                     <div
                       key={cut.id}
-                      draggable={!trimmingState}
+                      draggable={!trimmingState && !trimmingLoopState}
                       onDragStart={(e) => {
                         setDraggedCutIndex(idx);
                         e.dataTransfer.setData('text/plain', String(idx));
@@ -825,15 +864,24 @@ export default function TimelinePro({
                           itemId: cut.id,
                         });
                       }}
-                      style={{ width: `${cutWidth}px` }}
+                      style={{
+                        width: `${cutWidth}px`,
+                        backgroundImage: isLooped && cutWidth > cycleWidth + 4
+                          ? `repeating-linear-gradient(90deg, transparent, transparent ${Math.max(1, Math.round(cycleWidth) - 1)}px, rgba(245, 158, 11, 0.45) ${Math.max(1, Math.round(cycleWidth) - 1)}px, rgba(245, 158, 11, 0.45) ${Math.round(cycleWidth)}px)`
+                          : undefined
+                      }}
                       className={`h-16 rounded-lg relative flex flex-col justify-between overflow-hidden ${
                         cutWidth >= 40 ? 'px-2 py-1.5' : 'p-0.5'
                       } select-none transition-all cursor-pointer border shrink-0 ${
-                        isSelected
-                          ? 'bg-zinc-900 border-purple-400 shadow-xl shadow-purple-950/50 ring-1 ring-purple-400'
-                          : 'bg-zinc-950/90 border-zinc-800 hover:border-purple-600/70'
-                      } ${cut.loopToAudio ? 'ring-1 ring-amber-400' : ''}`}
-                      title={`Clip ${idx + 1}: ${cut.name} (${cut.duration.toFixed(1)}s)`}
+                        isLooped
+                          ? (isSelected
+                              ? 'bg-amber-950/90 border-amber-400 shadow-xl shadow-amber-950/70 ring-2 ring-amber-400 text-amber-100'
+                              : 'bg-amber-950/60 border-amber-500/80 hover:border-amber-400 text-amber-200')
+                          : (isSelected
+                              ? 'bg-zinc-900 border-purple-400 shadow-xl shadow-purple-950/50 ring-1 ring-purple-400 text-white'
+                              : 'bg-zinc-950/90 border-zinc-800 hover:border-purple-600/70 text-zinc-300')
+                      }`}
+                      title={isLooped ? `Bucle: ${cut.name} (${effectiveCutDuration.toFixed(1)}s, ${loopCycles.toFixed(1)} vueltas)` : `Clip ${idx + 1}: ${cut.name} (${cut.duration.toFixed(1)}s)`}
                     >
                       {/* Handles de recorte interactivo (solo si cutWidth >= 24px) */}
                       {cutWidth >= 24 && (
@@ -851,39 +899,76 @@ export default function TimelinePro({
                                 originalDuration: cut.duration,
                               });
                             }}
-                            className="absolute left-0 top-0 bottom-0 w-2 hover:w-3 bg-purple-500/30 hover:bg-purple-400 cursor-ew-resize z-20 flex items-center justify-center transition-all group/lhandle rounded-l-lg"
-                            title="Recortar inicio (In-point)"
+                            className={`absolute left-0 top-0 bottom-0 w-2 hover:w-3 cursor-ew-resize z-20 flex items-center justify-center transition-all group/lhandle rounded-l-lg ${
+                              isLooped ? 'bg-amber-500/40 hover:bg-amber-400' : 'bg-purple-500/30 hover:bg-purple-400'
+                            }`}
+                            title="Recortar inicio del video (In-point)"
                           >
                             <div className="w-[1.5px] h-4 bg-white/70 group-hover/lhandle:bg-white rounded" />
                           </div>
 
-                          <div
-                            onMouseDown={(e) => {
-                              e.stopPropagation();
-                              onSelectCut(cut.id);
-                              setTrimmingState({
-                                cutId: cut.id,
-                                edge: 'right',
-                                startX: e.clientX,
-                                originalStart: cut.startTime,
-                                originalEnd: cut.endTime,
-                                originalDuration: cut.duration,
-                              });
-                            }}
-                            className="absolute right-0 top-0 bottom-0 w-2 hover:w-3 bg-purple-500/30 hover:bg-purple-400 cursor-ew-resize z-20 flex items-center justify-center transition-all group/rhandle rounded-r-lg"
-                            title="Recortar final (Out-point)"
-                          >
-                            <div className="w-[1.5px] h-4 bg-white/70 group-hover/rhandle:bg-white rounded" />
-                          </div>
+                          {isLooped ? (
+                            <div
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                onSelectCut(cut.id);
+                                setTrimmingLoopState({
+                                  cutId: cut.id,
+                                  startX: e.clientX,
+                                  originalLoopDuration: effectiveCutDuration,
+                                  baseDuration: cut.duration,
+                                });
+                              }}
+                              className="absolute right-0 top-0 bottom-0 w-3.5 hover:w-4.5 bg-amber-500/50 hover:bg-amber-400 cursor-ew-resize z-20 flex items-center justify-center transition-all group/loopHandle rounded-r-lg shadow-sm"
+                              title="Arrastra para alargar o encoger la duración del bucle (Loop Handle)"
+                            >
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-[7px] text-amber-950 font-black select-none leading-none">🔁</span>
+                                <div className="w-[1.5px] h-3 bg-white group-hover/loopHandle:bg-amber-100 rounded" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                onSelectCut(cut.id);
+                                setTrimmingState({
+                                  cutId: cut.id,
+                                  edge: 'right',
+                                  startX: e.clientX,
+                                  originalStart: cut.startTime,
+                                  originalEnd: cut.endTime,
+                                  originalDuration: cut.duration,
+                                });
+                              }}
+                              className="absolute right-0 top-0 bottom-0 w-2 hover:w-3 bg-purple-500/30 hover:bg-purple-400 cursor-ew-resize z-20 flex items-center justify-center transition-all group/rhandle rounded-r-lg"
+                              title="Recortar final del video (Out-point)"
+                            >
+                              <div className="w-[1.5px] h-4 bg-white/70 group-hover/rhandle:bg-white rounded" />
+                            </div>
+                          )}
                         </>
                       )}
 
                       {/* Sub-capa Superior: Metadatos de Video */}
                       {cutWidth >= 40 && (
-                        <div className="flex items-center justify-between text-[10px] font-bold text-white truncate gap-1 bg-zinc-900/60 px-1.5 py-0.5 rounded">
+                        <div className={`flex items-center justify-between text-[10px] font-bold truncate gap-1 px-1.5 py-0.5 rounded ${
+                          isLooped ? 'bg-amber-950/80 text-amber-200 border border-amber-600/50' : 'bg-zinc-900/60 text-white'
+                        }`}>
                           <span className="truncate flex items-center gap-1">
-                            <span className="text-purple-400">🎬</span>
-                            {cutWidth >= 70 && <span className="truncate">Clip {idx + 1}: {cut.name}</span>}
+                            <span className={isLooped ? "text-amber-400" : "text-purple-400"}>
+                              {isLooped ? '🔁' : '🎬'}
+                            </span>
+                            {cutWidth >= 70 && (
+                              <span className="truncate">
+                                {isLooped ? `BUCLE: ${cut.name}` : `Clip ${idx + 1}: ${cut.name}`}
+                              </span>
+                            )}
+                            {isLooped && cutWidth >= 130 && (
+                              <span className="text-[8.5px] text-amber-300/80 font-mono shrink-0 ml-1">
+                                (↻ {loopCycles.toFixed(1)}x)
+                              </span>
+                            )}
                           </span>
                           {cutWidth >= 115 && (
                             <div className="flex items-center gap-1 shrink-0">
@@ -903,10 +988,10 @@ export default function TimelinePro({
                                 }}
                                 className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold transition-all border cursor-pointer ${
                                   cut.loopToAudio
-                                    ? 'bg-amber-500/30 text-amber-300 border-amber-500/70 shadow-sm'
+                                    ? 'bg-amber-500 text-amber-950 border-amber-400 shadow-sm hover:bg-amber-400 font-black'
                                     : 'bg-zinc-800/80 text-zinc-400 border-zinc-700 hover:text-zinc-200 hover:border-zinc-500'
                                 }`}
-                                title={cut.loopToAudio ? 'Bucle activo: El clip se repite continuamente' : 'Activar bucle en este clip'}
+                                title={cut.loopToAudio ? 'Bucle activo: Haz clic para desactivar' : 'Activar bucle en este clip'}
                               >
                                 🔁 {cut.loopToAudio ? 'Loop ON' : 'Loop'}
                               </button>
@@ -917,27 +1002,33 @@ export default function TimelinePro({
 
                       {/* Si el corte es estrecho (entre 18 y 40px), mostrar icono centrado */}
                       {cutWidth >= 18 && cutWidth < 40 && (
-                        <div className="flex flex-col items-center justify-center h-full text-purple-300 font-bold text-[10px]">
-                          <span>🎬</span>
+                        <div className={`flex flex-col items-center justify-center h-full font-bold text-[10px] ${
+                          isLooped ? 'text-amber-400' : 'text-purple-300'
+                        }`}>
+                          <span>{isLooped ? '🔁' : '🎬'}</span>
                         </div>
                       )}
 
                       {/* Sub-capa Inferior: Gráfica de Audio / Waveform */}
                       {cutWidth >= 60 && (
                         <div className={`flex items-center justify-between px-1.5 py-0.5 rounded text-[9px] font-mono border ${
-                          muteOriginalAudio
-                            ? 'bg-amber-950/30 border-amber-900/40 text-amber-400/90'
-                            : 'bg-indigo-950/40 border-indigo-900/40 text-indigo-300'
+                          isLooped
+                            ? 'bg-amber-950/50 border-amber-900/60 text-amber-300'
+                            : (muteOriginalAudio
+                                ? 'bg-amber-950/30 border-amber-900/40 text-amber-400/90'
+                                : 'bg-indigo-950/40 border-indigo-900/40 text-indigo-300')
                         }`}>
                           <div className="flex items-center gap-1 truncate">
                             <span>{muteOriginalAudio ? '🔇' : '🔊'}</span>
                             {cutWidth >= 110 && (
                               <span className="truncate">
-                                {muteOriginalAudio ? 'Audio Mudo' : 'Cámara (100%)'}
+                                {muteOriginalAudio ? 'Audio Mudo' : (isLooped ? 'Audio en Loop' : 'Cámara (100%)')}
                               </span>
                             )}
                           </div>
-                          <span className="text-[9px] text-zinc-400 shrink-0 font-bold">{cut.duration.toFixed(1)}s</span>
+                          <span className={`text-[9px] shrink-0 font-bold ${isLooped ? 'text-amber-300' : 'text-zinc-400'}`}>
+                            {isLooped ? `${effectiveCutDuration.toFixed(1)}s (base ${cut.duration.toFixed(1)}s)` : `${cut.duration.toFixed(1)}s`}
+                          </span>
                         </div>
                       )}
                     </div>

@@ -1,14 +1,14 @@
-# 💡 Idea & Escalabilidad: Image & Thumbnail Studio
+# 💡 Idea & Escalabilidad: Image Studio (Estudio de Imágenes)
 
 > **Ruta:** `docs/features/image_generator/idea.md`  
-> **Propósito:** Creación de miniaturas de alto CTR y fondos visuales sin depender de diseñadores gráficos ni herramientas externas.
+> **Propósito:** Generación de imágenes y recursos visuales para la producción de video, ambientación de escenas, material de apoyo y arte de canal.
 
 ---
 
-## 🎯 1. El Problema & El Propósito de Negocio
+## 🎯 1. El Problema & El Propósito
 
-- **El Problema:** La miniatura representa más del 80% del éxito de un video en YouTube. Muchos creadores ven una miniatura exitosa de su competencia y quieren replicar su estética, pero no saben cómo redactar un prompt adecuado para DALL-E o Midjourney, terminando con imágenes genéricas sin gancho visual.
-- **La Solución AutoProd:** Pegas un pantallazo de cualquier miniatura (`Ctrl+V`); la IA analiza la iluminación, paleta y composición, y te hace 3 preguntas inteligentes para clonar esa misma vibra estética con tu propio personaje o temática, guardando el archivo listo en tu disco local.
+- **El Problema:** La producción de contenido audiovisual requiere un flujo constante de imágenes: fondos para escenas, ilustraciones conceptuales, B-roll estático para la línea de tiempo, recursos de ambientación e identidad visual del canal. Depender de bancos de imágenes genéricos o herramientas externas dispersas rompe el flujo de trabajo del creador y genera costos innecesarios.
+- **La Solución AutoProd:** Un estudio de imágenes integrado directamente en el sistema operativo del creador. Permite generar cualquier recurso visual en formatos y resoluciones generales (16:9 panorámico para video, 9:16 vertical para formatos móviles y 1:1 cuadrado para elementos generales y perfiles), con posibilidad de guiar la estética mediante imágenes de referencia y guardar el archivo automáticamente en el disco local del canal y en la nube.
 
 ---
 
@@ -16,19 +16,19 @@
 
 | Capacidad | Estado | Descripción / Comentario |
 |---|:---:|---|
-| **Análisis de Referencia con Visión (`Ctrl+V`)** | `✅ HECHO` | Desglose automático de composición, colores e iluminación. |
-| **Cuestionario Guiado de Prompting** | `✅ HECHO` | Selección de aspectos, estilos preconfigurados y emoción. |
-| **Generación con DALL-E 3 (16:9, 9:16, 1:1)** | `✅ HECHO` | Imágenes de alta resolución nativas. |
-| **Persistencia Dual (Disco Local + Supabase Storage)** | `✅ HECHO` | Archivo físico en carpeta del canal y respaldo en la nube. |
-| **Generación de Textos y Títulos Superpuestos** | `⏳ FALTANTE` | Renderizado de textos tipográficos llamativos (estilo MrBeast) sobre la imagen. |
-| **Integración con Modelos Locales (Stable Diffusion / FLUX)** | `⏳ FALTANTE` | Opción de generar imágenes 100% gratis en GPUs NVIDIA locales. |
-| **Eliminación de Fondo en 1 Clic (Remove Background)** | `⏳ FALTANTE` | Recortar al presentador o personaje para colocarlo en diferentes escenas. |
+| **Generación en Proporciones Estándar (16:9, 9:16, 1:1)** | `✅ HECHO` | Cobertura para fondos de video, formatos verticales y cuadrados universales. |
+| **Referencia de Estilo Visual (`Ctrl+V` y arrastrar)** | `✅ HECHO` | Extracción de paleta y composición para guiar la estética de la nueva imagen. |
+| **Mejora Asistida de Descripción** | `✅ HECHO` | Optimización de detalles artísticos, iluminación y encuadre a petición del creador. |
+| **Guardado Dual en Espacio de Trabajo y Nube** | `✅ HECHO` | Archivo físico guardado en el canal local y respaldo sincronizado en Supabase Storage. |
+| **Selección de Tipo de Recurso (Imagen vs. Portada)** | `✅ HECHO` | Organización automática en la carpeta correspondiente del canal (`Imagenes/` o `Miniaturas/`). |
+| **Integración con Modelos Locales (FLUX / SDXL)** | `⏳ FALTANTE` | Opción de generar imágenes directamente en hardware local sin costo por API. |
+| **Eliminación y Segmentación de Fondos** | `⏳ FALTANTE` | Aislar sujetos y objetos para montaje directo sobre la línea de tiempo. |
 
 ---
 
-## 🚀 3. Banco de Ideas de Escalabilidad para este Módulo
+## 🚀 3. Banco de Ideas de Escalabilidad
 
-1. **Simulador de Miniatura en Feed Real de YouTube:**
-   - Previsualizar cómo se ve la miniatura generada entre miniaturas reales de la competencia en modo móvil y escritorio.
-2. **Generador de Paquetes A/B (3 Variantes Simultáneas):**
-   - Generar automáticamente una versión enfocada en emoción de sorpresa, otra en misterio y otra en contraste extremo para pruebas A/B.
+1. **Inserción Directa en Video Studio:**
+   - Botón para enviar una imagen generada directamente a la pista de video o recursos del proyecto activo sin salir del flujo de trabajo.
+2. **Generación por Lotes para Escenas de Guion:**
+   - A partir de un guion estructurado, generar automáticamente las ilustraciones o fondos necesarios para cada sección narrativa.

@@ -871,25 +871,51 @@ def run_timeline_render(job_id: str, req: RenderTimelineRequest):
                 et = st + 15.0
 
             cut_dur = max(0.2, et - st)
-            total_cuts_duration += cut_dur
+            effective_cut_dur = cut_dur
 
-            # Filtro de video para este corte (con soporte de inversión / reverse)
-            rev_v = ",reverse" if getattr(cut, "is_reversed", False) else ""
-            filter_complex_parts.append(
-                f"[{i}:v]trim=start={st:.3f}:end={et:.3f},setpts=PTS-STARTPTS{rev_v},{scale_filter}[v_cut_{i}]"
-            )
+            # Si este corte individual tiene activa una duración de bucle elástica
+            if cut.loop_to_duration and cut.loop_to_duration > cut_dur:
+                effective_cut_dur = float(cut.loop_to_duration)
+                loop_frames = max(30, int(round(cut_dur * 30)))
+                rev_v = ",reverse" if getattr(cut, "is_reversed", False) else ""
+                filter_complex_parts.append(
+                    f"[{i}:v]trim=start={st:.3f}:end={et:.3f},setpts=PTS-STARTPTS{rev_v},{scale_filter},"
+                    f"loop=loop=-1:size={loop_frames}:start=0,trim=start=0:end={effective_cut_dur:.3f},setpts=PTS-STARTPTS[v_cut_{i}]"
+                )
 
-            # Filtro de audio para este corte si se requiere audio de cámara
-            if include_camera_audio:
-                if clip_has_audio:
-                    rev_a = ",areverse" if getattr(cut, "is_reversed", False) else ""
-                    filter_complex_parts.append(
-                        f"[{i}:a]atrim=start={st:.3f}:end={et:.3f},asetpts=PTS-STARTPTS{rev_a},aformat=sample_rates=44100:channel_layouts=stereo[a_cut_{i}]"
-                    )
-                else:
-                    filter_complex_parts.append(
-                        f"aevalsrc=0:d={cut_dur:.3f}:s=44100:c=stereo[a_cut_{i}]"
-                    )
+                if include_camera_audio:
+                    if clip_has_audio:
+                        aloop_samples = max(44100, int(round(cut_dur * 44100)))
+                        rev_a = ",areverse" if getattr(cut, "is_reversed", False) else ""
+                        filter_complex_parts.append(
+                            f"[{i}:a]atrim=start={st:.3f}:end={et:.3f},asetpts=PTS-STARTPTS{rev_a},"
+                            f"aloop=loop=-1:size={aloop_samples}:start=0,atrim=start=0:end={effective_cut_dur:.3f},asetpts=PTS-STARTPTS,"
+                            f"aformat=sample_rates=44100:channel_layouts=stereo[a_cut_{i}]"
+                        )
+                    else:
+                        filter_complex_parts.append(
+                            f"aevalsrc=0:d={effective_cut_dur:.3f}:s=44100:c=stereo[a_cut_{i}]"
+                        )
+            else:
+                # Corte normal estándar
+                rev_v = ",reverse" if getattr(cut, "is_reversed", False) else ""
+                filter_complex_parts.append(
+                    f"[{i}:v]trim=start={st:.3f}:end={et:.3f},setpts=PTS-STARTPTS{rev_v},{scale_filter}[v_cut_{i}]"
+                )
+
+                # Filtro de audio para este corte si se requiere audio de cámara
+                if include_camera_audio:
+                    if clip_has_audio:
+                        rev_a = ",areverse" if getattr(cut, "is_reversed", False) else ""
+                        filter_complex_parts.append(
+                            f"[{i}:a]atrim=start={st:.3f}:end={et:.3f},asetpts=PTS-STARTPTS{rev_a},aformat=sample_rates=44100:channel_layouts=stereo[a_cut_{i}]"
+                        )
+                    else:
+                        filter_complex_parts.append(
+                            f"aevalsrc=0:d={cut_dur:.3f}:s=44100:c=stereo[a_cut_{i}]"
+                        )
+
+            total_cuts_duration += effective_cut_dur
 
         # Próximo índice de entrada libre para pistas auxiliares
         next_input_idx = len(req.cuts)
@@ -929,21 +955,13 @@ def run_timeline_render(job_id: str, req: RenderTimelineRequest):
                 dur = float(ov.duration or 0.0)
                 max_overlay_end = max(max_overlay_end, st + dur)
 
-        is_any_cut_looping = any(bool(c.loop_to_duration and c.loop_to_duration > 0) for c in req.cuts)
         master_project_duration = max(total_cuts_duration, max_audio_end, max_overlay_end)
-        if is_any_cut_looping and loop_target_duration:
-            master_project_duration = max(master_project_duration, loop_target_duration)
 
         # Si el audio o los overlays continúan más allá de los videos en V1
         if master_project_duration > total_cuts_duration and total_cuts_duration > 0:
-            if is_any_cut_looping:
-                loop_frames = max(30, int(round(total_cuts_duration * 30)))
-                filter_complex_parts.append(f"{v_base_label}loop=loop=-1:size={loop_frames}:start=0[v_looped]")
-                v_base_label = "[v_looped]"
-            else:
-                gap_sec = master_project_duration - total_cuts_duration
-                filter_complex_parts.append(f"{v_base_label}tpad=stop_mode=add:stop_duration={gap_sec:.3f}:color=black[v_padded]")
-                v_base_label = "[v_padded]"
+            gap_sec = master_project_duration - total_cuts_duration
+            filter_complex_parts.append(f"{v_base_label}tpad=stop_mode=add:stop_duration={gap_sec:.3f}:color=black[v_padded]")
+            v_base_label = "[v_padded]"
 
         # ── 3. Capas y Overlays Interactivos (Texto, Stickers, CTAs) ──
         cur_v_label = v_base_label
