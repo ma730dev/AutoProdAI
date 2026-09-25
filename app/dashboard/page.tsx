@@ -864,7 +864,7 @@ export default function Dashboard() {
             loadWorkspaceTree(workspacePath);
           }
           if (data.workspaceModified || data.channelId) {
-            fetchChannels();
+            fetchDbChannels();
             if (data.workspaceModified) {
               toast.success(lang === 'es' ? 'Workspace sincronizado con los cambios de la IA' : 'Workspace synchronized with AI changes');
             }
