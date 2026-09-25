@@ -128,7 +128,24 @@ jobs:
 
       - name: Preparar Paquete y Binarios (macOS)
         run: |
-          mkdir -p dist bin dist/AutoProdAI-macOS/bin dist/AutoProdAI-macOS/workspace
+          mkdir -p dist bin dist/AutoProdAI-macOS/bin
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/InfoCanal
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Guiones
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Videos
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Miniatura
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Musica
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Imagenes
+
+          # Plantillas de recursos
+          printf "# Contexto y ADN del Canal: Canal_1\n\n## 🎯 Nicho y Audiencia Objetivo\n- **Temática / Nicho:** Temática Principal del Canal\n- **Público Objetivo:** Creadores y entusiastas del nicho\n- **Tono de Voz:** Cercano, profesional y dinámico\n\n## 📋 Directivas de Producción y Marca\n- **Estilo visual:** Moderno, limpio y minimalista\n- **Duración promedio:** 8 - 15 minutos\n- **Frecuencia:** Semanal\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/InfoCanal/Contexto_canal.md
+          printf "# Métricas y Rendimiento del Canal: Canal_1\n\n| Fecha | Video | Vistas | CTR Miniatura | Retención Media |\n|---|---|---|---|---|\n| Registro | Video 1 (Base) | - | - | - |\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/InfoCanal/Metricas_canal.md
+          printf "# Historial de Contenido y Banco de Ideas: Canal_1\n\n## 📌 Temas Cubiertos\n- [x] Apertura e inicialización del canal Canal_1\n\n## 💡 Banco de Ideas Futuras\n- Idea 1: Introducción a la temática y fundamentos clave\n- Idea 2: Guía práctica paso a paso para creadores\n- Idea 3: Análisis de tendencias y errores comunes\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/InfoCanal/Historial_canal.md
+          printf "# Guion: [Título del Video para Canal_1]\n\n## 🎣 Gancho Inicial (0:00 - 0:30)\n- Planteamiento del problema y por qué este contenido es indispensable.\n\n## 📖 Desarrollo Principal (0:30 - 7:00)\n- Punto 1: Concepto clave y contexto\n- Punto 2: Demostración práctica y desglose de valor\n- Punto 3: Conclusión accionable\n\n## 🚀 Llamado a la Acción y Cierre (7:00 - 8:00)\n- Pregunta para interacción en comentarios y cierre de video.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Guiones/Plantilla_Guion.md
+          printf "# Videos y Clips (Canal_1)\nAlmacenamiento de metraje bruto, grabaciones y exportaciones finales.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Videos/README.md
+          printf "# Conceptos de Miniaturas: Canal_1\n\n- **Concepto 1:** Expresión de alto impacto con elemento central de contraste.\n- **Tipografía:** Máximo 3 palabras grandes y legibles en dispositivos móviles.\n- **Colores:** Tonos vibrantes sobre fondo oscuro.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Miniatura/Ideas_Miniaturas.md
+          printf "# Música de Fondo (Canal_1)\nPistas musicales y efectos sonoros libres de derechos de autor.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Musica/README.md
+          printf "# Recursos Gráficos e Imágenes (Canal_1)\nBanners, texturas, capturas y miniaturas generadas con IA.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Imagenes/README.md
+
           cp controlador/dist/autoprod-motor dist/autoprod-motor
           chmod +x dist/autoprod-motor
           cp dist/autoprod-motor dist/AutoProdAI-macOS/
@@ -143,9 +160,11 @@ jobs:
           cp $(which ffmpeg) dist/AutoProdAI-macOS/bin/ 2>/dev/null || true
           cp $(which ffprobe) dist/AutoProdAI-macOS/bin/ 2>/dev/null || true
 
-          # Script de arranque
+          # Script de arranque y config
           printf '#!/bin/bash\nDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"\ncd "$DIR"\nexport PATH="$DIR/bin:$PATH"\n./autoprod-motor\n' > dist/AutoProdAI-macOS/start_motor.sh
           chmod +x dist/AutoProdAI-macOS/start_motor.sh
+
+          printf '{\n  "basePath": "$HOME/AutoProdAI/workspace/youtube",\n  "binPath": "$HOME/AutoProdAI/bin",\n  "version": "1.0.0"\n}\n' > dist/AutoProdAI-macOS/.autoprod-config.json
 
       - name: Limpiar Espacio en Disco
         run: |
