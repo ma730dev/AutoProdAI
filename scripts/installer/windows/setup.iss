@@ -22,6 +22,9 @@ SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64compatible
+CloseApplications=force
+RestartApplications=no
+UsePreviousAppDir=yes
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -54,6 +57,15 @@ Name: "{autodesktop}\AutoProd Motor"; Filename: "{app}\{#MyAppExeName}"; Tasks: 
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function InitializeSetup(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  // Forzar cierre de cualquier instancia previa para evitar archivo bloqueado en Windows
+  Exec('taskkill.exe', '/F /IM autoprod-motor.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := True;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ConfigFile: String;
@@ -63,6 +75,11 @@ var
   BinPath: String;
   CanalPath: String;
 begin
+  if CurStep = ssInstall then
+  begin
+    DeleteFile(ExpandConstant('{autodesktop}\AutoProd Motor.lnk'));
+  end;
+
   if CurStep = ssPostInstall then
   begin
     AppPath := ExpandConstant('{app}');

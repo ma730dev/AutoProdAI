@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
-import requests
+import urllib.request
+import urllib.error
+import json
 
 router = APIRouter(
     prefix="/system",
@@ -135,15 +137,19 @@ def trigger_update(req: UpdateRequest, background_tasks: BackgroundTasks):
     if not download_url:
         repo = os.environ.get("GITHUB_REPO", "ma730dev/AutoProdAI")
         try:
-            gh_res = requests.get(f"https://api.github.com/repos/{repo}/releases/latest", timeout=10)
-            if gh_res.ok:
-                rel_data = gh_res.json()
-                target_version = rel_data.get("tag_name", "latest").replace("v", "")
-                target_asset_name = "autoprod-motor.exe" if sys.platform == "win32" else "autoprod-motor"
-                for asset in rel_data.get("assets", []):
-                    if asset.get("name") == target_asset_name:
-                        download_url = asset.get("browser_download_url")
-                        break
+            req_gh = urllib.request.Request(
+                f"https://api.github.com/repos/{repo}/releases/latest",
+                headers={"User-Agent": "AutoProd-Motor-Updater"}
+            )
+            with urllib.request.urlopen(req_gh, timeout=10) as response:
+                if response.status == 200:
+                    rel_data = json.loads(response.read().decode('utf-8'))
+                    target_version = rel_data.get("tag_name", "latest").replace("v", "")
+                    target_asset_name = "autoprod-motor.exe" if sys.platform == "win32" else "autoprod-motor"
+                    for asset in rel_data.get("assets", []):
+                        if asset.get("name") == target_asset_name:
+                            download_url = asset.get("browser_download_url")
+                            break
         except Exception as e:
             print(f"[Auto-Update] No se pudo resolver URL remota: {e}")
 
@@ -168,15 +174,21 @@ def trigger_update(req: UpdateRequest, background_tasks: BackgroundTasks):
         }
 
     try:
-        # Descarga con streaming
+        # Descarga con streaming usando urllib nativo
         print(f"[Auto-Update] Descargando actualización desde: {download_url}")
-        res = requests.get(download_url, stream=True, timeout=60)
-        if not res.ok:
-            raise HTTPException(status_code=502, detail=f"Fallo al descargar binario: HTTP {res.status_code}")
+        req_dl = urllib.request.Request(
+            download_url,
+            headers={"User-Agent": "AutoProd-Motor-Updater"}
+        )
+        with urllib.request.urlopen(req_dl, timeout=60) as response:
+            if response.status != 200:
+                raise HTTPException(status_code=502, detail=f"Fallo al descargar binario: HTTP {response.status}")
 
-        with open(temp_download, "wb") as f:
-            for chunk in res.iter_content(chunk_size=1024 * 64):
-                if chunk:
+            with open(temp_download, "wb") as f:
+                while True:
+                    chunk = response.read(1024 * 64)
+                    if not chunk:
+                        break
                     f.write(chunk)
 
         # Validar tamaño mínimo de binario (al menos 2 MB para evitar páginas de error 404 HTML)
