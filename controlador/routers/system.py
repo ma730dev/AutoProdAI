@@ -15,8 +15,8 @@ router = APIRouter(
     tags=["system"]
 )
 
-# Versión canónica del motor local
-CURRENT_MOTOR_VERSION = "1.0.0"
+# Versión canónica fallback del motor local
+DEFAULT_MOTOR_VERSION = "1.5.2"
 
 class UpdateRequest(BaseModel):
     download_url: Optional[str] = None
@@ -27,33 +27,69 @@ def get_base_dir() -> Path:
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
 
+def get_current_motor_version() -> str:
+    """
+    Retorna la versión actual instalada leyendo prioritariamente version.txt,
+    o variable de entorno AUTOPROD_MOTOR_VERSION, o DEFAULT_MOTOR_VERSION.
+    """
+    try:
+        v_file = get_base_dir() / "version.txt"
+        if v_file.exists():
+            v = v_file.read_text(encoding="utf-8").strip()
+            if v:
+                return v.replace("v", "")
+    except Exception:
+        pass
+    return os.environ.get("AUTOPROD_MOTOR_VERSION", DEFAULT_MOTOR_VERSION)
+
+CURRENT_MOTOR_VERSION = get_current_motor_version()
+
 @router.get("/version")
 def get_version():
     """Retorna la versión actual instalada del motor local y metadatos de entorno."""
+    cur_ver = get_current_motor_version()
     return {
-        "version": CURRENT_MOTOR_VERSION,
+        "version": cur_ver,
         "platform": sys.platform,
         "is_frozen": getattr(sys, 'frozen', False),
         "executable": sys.executable,
         "base_dir": str(get_base_dir())
     }
 
-def execute_swap_and_restart(temp_path: Path, target_exe: Path):
+def execute_swap_and_restart(temp_path: Path, target_exe: Path, target_version: str):
     """
     Ejecuta el script de swap atómico según el sistema operativo.
-    Espera 1 segundo para asegurar que la respuesta HTTP se haya enviado y el puerto quede liberado.
+    Espera liberación de proceso con ping (sin timeout para evitar errores de consola no interactiva),
+    reintenta el reemplazo atómico hasta que Windows libere el handle y arranca el nuevo binario.
     """
     time.sleep(1.2)
     pid = os.getpid()
     base_dir = get_base_dir()
 
+    # Guardar version.txt para que el nuevo proceso arranque con la versión correcta
+    try:
+        (base_dir / "version.txt").write_text(str(target_version).replace("v", ""), encoding="utf-8")
+    except Exception as e:
+        print(f"[Auto-Update] No se pudo guardar version.txt: {e}")
+
     if sys.platform == "win32":
         swap_bat = base_dir / "update_swap.bat"
-        # Script batch que espera liberación de proceso, reemplaza el binario y lo arranca
+        # Script batch robusto con bucle de reintento para superar el bloqueo de archivo en Windows
         bat_content = f"""@echo off
-timeout /t 1 /nobreak >nul
+ping 127.0.0.1 -n 3 >nul
 taskkill /F /PID {pid} >nul 2>&1
+
+set /a ATTEMPTS=0
+:retry_swap
+set /a ATTEMPTS+=1
 move /y "{str(temp_path)}" "{str(target_exe)}" >nul 2>&1
+if errorlevel 1 (
+    if %ATTEMPTS% leq 12 (
+        ping 127.0.0.1 -n 2 >nul
+        goto retry_swap
+    )
+)
+
 start "" "{str(target_exe)}"
 del "%~f0"
 """
@@ -73,11 +109,9 @@ del "%~f0"
     else:
         # macOS / Linux (UNIX)
         try:
-            # En UNIX un archivo en ejecución puede ser reemplazado atómicamente con os.replace
             os.replace(str(temp_path), str(target_exe))
             os.chmod(str(target_exe), 0o755)
 
-            # Relanzar en segundo plano desacoplado
             subprocess.Popen(
                 ["/bin/bash", "-c", f"sleep 1 && '{str(target_exe)}' &"],
                 start_new_session=True,
@@ -155,12 +189,12 @@ def trigger_update(req: UpdateRequest, background_tasks: BackgroundTasks):
             os.chmod(temp_download, 0o755)
 
         # Programar el swap desacoplado en background
-        background_tasks.add_task(execute_swap_and_restart, temp_download, target_exe)
+        background_tasks.add_task(execute_swap_and_restart, temp_download, target_exe, target_version)
 
         return {
             "status": "updating",
             "message": f"Actualización a v{target_version} descargada correctamente ({file_size // (1024*1024)} MB). El motor se reiniciará en unos segundos.",
-            "current_version": CURRENT_MOTOR_VERSION,
+            "current_version": get_current_motor_version(),
             "target_version": target_version
         }
 

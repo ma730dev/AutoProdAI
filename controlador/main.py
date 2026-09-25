@@ -54,7 +54,7 @@ def root():
     return {
         "status": "online",
         "service": "AutoProd Local Motor",
-        "version": "1.0.0",
+        "version": system.get_current_motor_version(),
         "workspace_path": ws_path,
         "docs": "/docs",
         "status_url": "/status"
@@ -66,7 +66,7 @@ def get_status():
     return {
         "status": "online",
         "message": "Motor local conectado correctamente.",
-        "version": "1.0.0",
+        "version": system.get_current_motor_version(),
         "workspace_path": ws_path
     }
 
