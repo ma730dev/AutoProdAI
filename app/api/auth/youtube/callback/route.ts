@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/prisma/db';
+import { PLANS_CONFIG } from '@/lib/pricing-config';
 
 /**
  * GET /api/auth/youtube/callback
@@ -99,7 +100,32 @@ export async function GET(req: NextRequest) {
     const stats = channelItem.statistics || {};
     const uploadsPlaylistId = channelItem.contentDetails?.relatedPlaylists?.uploads;
 
-    // 3. Upsert en la tabla Channel
+    // 3. Validar límite de canales del plan del usuario si es un canal nuevo
+    const existingChannel = await db.channel.findUnique({
+      where: { youtubeChannelId: ytChannelId }
+    });
+
+    if (!existingChannel) {
+      const dbUser = await db.user.findUnique({
+        where: { id: userId },
+        include: {
+          subscription: { include: { plan: { include: { limits: true } } } },
+          channels: true,
+        }
+      });
+      const userPlan = (dbUser?.subscription?.plan?.name as 'FREE' | 'STARTER' | 'PRO' | 'ENTERPRISE') || 'FREE';
+      const planConfig = PLANS_CONFIG[userPlan] || PLANS_CONFIG.FREE;
+      const maxChannels = dbUser?.role === 'ADMIN' ? 9999 : (dbUser?.subscription?.plan?.limits?.maxChannels ?? planConfig.maxChannels);
+      const currentCount = dbUser?.channels?.length ?? 0;
+
+      if (currentCount >= maxChannels) {
+        return NextResponse.redirect(
+          `${redirectBase}&error=${encodeURIComponent(`Límite de canales alcanzado (${currentCount}/${maxChannels}). Tu plan ${planConfig.displayName} no permite vincular más canales.`)}`
+        );
+      }
+    }
+
+    // 4. Upsert en la tabla Channel
     const channel = await db.channel.upsert({
       where: { youtubeChannelId: ytChannelId },
       create: {
@@ -107,6 +133,7 @@ export async function GET(req: NextRequest) {
         name: channelTitle,
         youtubeChannelId: ytChannelId,
         profilePicture,
+        folderStatus: 'PENDING',
         accessToken: access_token,
         refreshToken: refresh_token || null,
         tokenExpiry: new Date(Date.now() + (expires_in || 3600) * 1000),

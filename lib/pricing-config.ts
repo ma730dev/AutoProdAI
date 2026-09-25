@@ -46,10 +46,10 @@ export const PLANS_CONFIG: Record<'FREE' | 'STARTER' | 'PRO' | 'ENTERPRISE', Pla
   STARTER: {
     id: 'starter',
     name: 'STARTER',
-    displayName: 'Plan Starter',
+    displayName: 'Plan Básico (Basic)',
     priceUsd: 70,
     tokenBudgetUsd: 20, // Con 10% de comisión: $18 netos = 1,800 créditos
-    maxChannels: 1, // 1 Canal único profesional
+    maxChannels: 3, // Hasta 3 canales profesionales
     maxVideosPerChannel: 50,
     canRenderInCloud: true,
     hasAdvancedTemplates: false,
@@ -59,7 +59,7 @@ export const PLANS_CONFIG: Record<'FREE' | 'STARTER' | 'PRO' | 'ENTERPRISE', Pla
     features: [
       'AutoProd Brain™ (Cerebro Autónomo 24/7): 100% GRATIS e ILIMITADO',
       '⚡ Descarga del Motor Local AutoProd (Render GPU/CPU offline en tu PC)',
-      '1 Canal de YouTube Profesional (Totalmente automatizado)',
+      'Hasta 3 Canales de YouTube Profesionales (Totalmente automatizados)',
       'Bolsa mensual de 1,800 créditos de IA para modelos pesados y render',
       'Video Looper Studio hasta 1080p (1 hora)',
       'Whisper Local GPU/CPU sin límite + 60 min Cloud Whisper',
@@ -74,7 +74,7 @@ export const PLANS_CONFIG: Record<'FREE' | 'STARTER' | 'PRO' | 'ENTERPRISE', Pla
     displayName: 'Plan Pro',
     priceUsd: 100,
     tokenBudgetUsd: 30, // Con 10% de comisión: $27 netos = 2,700 créditos
-    maxChannels: 3, // Máximo 3 canales
+    maxChannels: 7, // Hasta 7 canales simultáneos
     maxVideosPerChannel: 200,
     canRenderInCloud: true,
     hasAdvancedTemplates: true,
@@ -84,7 +84,7 @@ export const PLANS_CONFIG: Record<'FREE' | 'STARTER' | 'PRO' | 'ENTERPRISE', Pla
     features: [
       'AutoProd Brain™ (Cerebro Autónomo 24/7): 100% GRATIS e ILIMITADO',
       '⚡ Motor Local AutoProd Completo: Aceleración GPU CUDA y procesamiento local',
-      'Hasta 3 Canales de YouTube simultáneos (Multi-nicho)',
+      'Hasta 7 Canales de YouTube simultáneos (Multi-nicho)',
       'Bolsa mensual de 2,700 créditos de IA para modelos pesados y render',
       'Video Looper Studio 4K (3 horas) + Batch Looper',
       'Modo Carpeta Canciones (Whisper Masivo Local/Cloud)',

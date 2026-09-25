@@ -822,14 +822,15 @@ def run_timeline_render(job_id: str, req: RenderTimelineRequest):
         else:
             scale_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
 
-        # Detección de Aceleración por Hardware GPU
+        # Detección de Aceleración por Hardware GPU y CPU Fallback Seguro
         hw_specs = governor.get_hardware_specs()
-        has_nvidia = hw_specs.get("gpu", {}).get("has_nvidia", False)
+        has_nvidia = hw_specs.get("has_cuda", False) or hw_specs.get("has_nvidia", False)
+        safe_threads = str(hw_specs.get("safe_threads", max(1, (os.cpu_count() or 4) - 2)))
         
         vcodec = "libx264"
-        crf_args = ["-crf", "17", "-preset", "medium"]
+        crf_args = ["-crf", "18", "-preset", "fast", "-threads", safe_threads]
         if req.is_preview:
-            crf_args = ["-crf", "22", "-preset", "veryfast"]
+            crf_args = ["-crf", "22", "-preset", "veryfast", "-threads", safe_threads]
         elif sys.platform == "darwin":
             vcodec = "h264_videotoolbox"
             crf_args = ["-b:v", "6M"]
@@ -1113,7 +1114,39 @@ def run_timeline_render(job_id: str, req: RenderTimelineRequest):
         _, stderr = process.communicate()
 
         if process.returncode != 0:
-            raise Exception(f"FFmpeg falló al componer el timeline: {stderr[-500:]}")
+            if vcodec == "h264_nvenc":
+                # Fallback automático y silencioso a CPU multihilo seguro
+                print(f"[VideoComposer] NVENC no pudo inicializarse ({stderr[-200:].strip()}). Fallback automático a CPU (libx264, {safe_threads} hilos)...")
+                cpu_cmd = []
+                skip_next = False
+                for idx, arg in enumerate(cmd):
+                    if skip_next:
+                        skip_next = False
+                        continue
+                    if arg == "-c:v":
+                        cpu_cmd.extend(["-c:v", "libx264"])
+                        skip_next = True
+                    elif arg in ["-preset", "-cq"]:
+                        skip_next = True
+                    else:
+                        cpu_cmd.append(arg)
+                
+                # Insertar parámetros de CPU antes del archivo de salida
+                out_idx = len(cpu_cmd) - 1
+                cpu_cmd[out_idx:out_idx] = ["-crf", "18", "-preset", "fast", "-threads", safe_threads]
+                
+                proc_cpu = subprocess.run(
+                    cpu_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    stdin=subprocess.DEVNULL,
+                    creationflags=creationflags,
+                    universal_newlines=True
+                )
+                if proc_cpu.returncode != 0:
+                    raise Exception(f"FFmpeg falló al componer el timeline (fallback CPU): {proc_cpu.stderr[-500:]}")
+            else:
+                raise Exception(f"FFmpeg falló al componer el timeline: {stderr[-500:]}")
 
         file_size = output_file.stat().st_size / (1024 * 1024) if output_file.exists() else 0
         JOBS[job_id]["status"] = "completed"

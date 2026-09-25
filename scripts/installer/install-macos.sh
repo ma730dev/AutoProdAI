@@ -34,10 +34,105 @@ else
 fi
 
 echo ""
-echo "[2/6] Creando estructura de directorios en: $INSTALL_DIR"
+echo "[2/6] Creando estructura de directorios y recursos de canal en: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/bin"
 mkdir -p "$INSTALL_DIR/motor"
-mkdir -p "$INSTALL_DIR/workspace"
+mkdir -p "$INSTALL_DIR/workspace/youtube/Canal_1/InfoCanal"
+mkdir -p "$INSTALL_DIR/workspace/youtube/Canal_1/Guiones"
+mkdir -p "$INSTALL_DIR/workspace/youtube/Canal_1/Videos"
+mkdir -p "$INSTALL_DIR/workspace/youtube/Canal_1/Miniatura"
+mkdir -p "$INSTALL_DIR/workspace/youtube/Canal_1/Musica"
+mkdir -p "$INSTALL_DIR/workspace/youtube/Canal_1/Imagenes"
+
+CANAL1_DIR="$INSTALL_DIR/workspace/youtube/Canal_1"
+
+if [ ! -f "$CANAL1_DIR/InfoCanal/Contexto_canal.md" ]; then
+cat <<'EOF' > "$CANAL1_DIR/InfoCanal/Contexto_canal.md"
+# Contexto y ADN del Canal: Canal_1
+
+## 🎯 Nicho y Audiencia Objetivo
+- **Temática / Nicho:** Temática Principal del Canal
+- **Público Objetivo:** Creadores y entusiastas del nicho
+- **Tono de Voz:** Cercano, profesional y dinámico
+
+## 📋 Directivas de Producción y Marca
+- **Estilo visual:** Moderno, limpio y minimalista
+- **Duración promedio:** 8 - 15 minutos
+- **Frecuencia:** Semanal
+EOF
+fi
+
+if [ ! -f "$CANAL1_DIR/InfoCanal/Metricas_canal.md" ]; then
+cat <<'EOF' > "$CANAL1_DIR/InfoCanal/Metricas_canal.md"
+# Métricas y Rendimiento del Canal: Canal_1
+
+| Fecha | Video | Vistas | CTR Miniatura | Retención Media |
+|---|---|---|---|---|
+| Registro | Video 1 (Base) | - | - | - |
+EOF
+fi
+
+if [ ! -f "$CANAL1_DIR/InfoCanal/Historial_canal.md" ]; then
+cat <<'EOF' > "$CANAL1_DIR/InfoCanal/Historial_canal.md"
+# Historial de Contenido y Banco de Ideas: Canal_1
+
+## 📌 Temas Cubiertos
+- [x] Apertura e inicialización del canal Canal_1
+
+## 💡 Banco de Ideas Futuras
+- Idea 1: Introducción a la temática y fundamentos clave
+- Idea 2: Guía práctica paso a paso para creadores
+- Idea 3: Análisis de tendencias y errores comunes
+EOF
+fi
+
+if [ ! -f "$CANAL1_DIR/Guiones/Plantilla_Guion.md" ]; then
+cat <<'EOF' > "$CANAL1_DIR/Guiones/Plantilla_Guion.md"
+# Guion: [Título del Video para Canal_1]
+
+## 🎣 Gancho Inicial (0:00 - 0:30)
+- Planteamiento del problema y por qué este contenido es indispensable.
+
+## 📖 Desarrollo Principal (0:30 - 7:00)
+- Punto 1: Concepto clave y contexto
+- Punto 2: Demostración práctica y desglose de valor
+- Punto 3: Conclusión accionable
+
+## 🚀 Llamado a la Acción y Cierre (7:00 - 8:00)
+- Pregunta para interacción en comentarios y cierre de video.
+EOF
+fi
+
+if [ ! -f "$CANAL1_DIR/Videos/README.md" ]; then
+cat <<'EOF' > "$CANAL1_DIR/Videos/README.md"
+# Videos y Clips (Canal_1)
+Almacenamiento de metraje bruto, grabaciones y exportaciones finales.
+EOF
+fi
+
+if [ ! -f "$CANAL1_DIR/Miniatura/Ideas_Miniaturas.md" ]; then
+cat <<'EOF' > "$CANAL1_DIR/Miniatura/Ideas_Miniaturas.md"
+# Conceptos de Miniaturas: Canal_1
+
+- **Concepto 1:** Expresión de alto impacto con elemento central de contraste.
+- **Tipografía:** Máximo 3 palabras grandes y legibles en dispositivos móviles.
+- **Colores:** Tonos vibrantes sobre fondo oscuro.
+EOF
+fi
+
+if [ ! -f "$CANAL1_DIR/Musica/README.md" ]; then
+cat <<'EOF' > "$CANAL1_DIR/Musica/README.md"
+# Música de Fondo (Canal_1)
+Pistas musicales y efectos sonoros libres de derechos de autor.
+EOF
+fi
+
+if [ ! -f "$CANAL1_DIR/Imagenes/README.md" ]; then
+cat <<'EOF' > "$CANAL1_DIR/Imagenes/README.md"
+# Recursos Gráficos e Imágenes (Canal_1)
+Banners, texturas, capturas y miniaturas generadas con IA.
+EOF
+fi
 
 # Copiar archivos del motor si existen localmente
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -95,7 +190,7 @@ echo "[5/6] Generando configuracion y lanzador..."
 
 cat <<EOF > "$INSTALL_DIR/.autoprod-config.json"
 {
-  "basePath": "$INSTALL_DIR/workspace",
+  "basePath": "$INSTALL_DIR/workspace/youtube",
   "binPath": "$INSTALL_DIR/bin",
   "version": "1.0.0"
 }

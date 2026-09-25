@@ -144,13 +144,13 @@ export function getToolsForDomain(domain?: ToolDomain): string[] {
 
   switch (domain) {
     case 'WORKSPACE_FS':
-      return ['crear_canal', 'listar_canales', ...commonSystemTools];
+      return ['crear_canal', 'crear_carpetas', 'listar_canales', ...commonSystemTools];
     case 'VIDEO_PROJECT':
-      return ['consultar_proyecto_video', 'listar_proyectos_video', ...commonSystemTools];
+      return ['crear_carpetas', 'consultar_proyecto_video', 'listar_proyectos_video', ...commonSystemTools];
     case 'CHANNEL_MEMORY':
-      return ['extraer_canal_youtube', 'generar_info_canal', ...commonSystemTools];
+      return ['crear_canal', 'extraer_canal_youtube', 'generar_info_canal', ...commonSystemTools];
     case 'CREATIVE_STUDIO':
-      return ['generar_locucion', ...commonSystemTools];
+      return ['generar_locucion', 'generar_imagen', ...commonSystemTools];
     default:
       return []; // Si no hay dominio, se conservan todas
   }

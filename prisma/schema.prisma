@@ -121,6 +121,7 @@ model Channel {
   name             String
   localPath        String?
   niche            String?
+  folderStatus     String?        @default("PENDING")
   profilePicture   String?
   refreshToken     String?
   tokenExpiry      DateTime?      @db.Timestamptz(6)

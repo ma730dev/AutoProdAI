@@ -29,11 +29,13 @@ const TextToSpeechStudio = dynamic(() => import('@/components/tts-studio/TextToS
 const LinkedAccountsView = dynamic(() => import('@/components/channels/LinkedAccountsView'), { ssr: false });
 const FilePreviewer = dynamic(() => import('@/components/workspace/FilePreviewer'), { ssr: false });
 const WorkspaceModal = dynamic(() => import('@/components/modals/WorkspaceModal'), { ssr: false });
+const WorkspaceCleanupModal = dynamic(() => import('@/components/modals/WorkspaceCleanupModal'), { ssr: false });
 const ConfirmDeleteModal = dynamic(() => import('@/components/modals/ConfirmDeleteModal'), { ssr: false });
 const MarkdownEditor = dynamic(() => import('@/components/workspace/MarkdownEditor'), { ssr: false });
 
 import { Conversation, Message } from '@/components/dashboard/types';
 import { FileNode } from '@/components/workspace/FileTree';
+import type { AuditChannelFolder } from '@/components/modals/WorkspaceCleanupModal';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -75,17 +77,74 @@ export default function Dashboard() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceTree, setWorkspaceTree] = useState<FileNode[]>([]);
   const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState(false);
+  const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
+  const [cleanupFolders, setCleanupFolders] = useState<AuditChannelFolder[]>([]);
+  const [pendingChannels, setPendingChannels] = useState<any[]>([]);
   const [modalParentPath, setModalParentPath] = useState<string | null>(null);
   const [creationMode, setCreationMode] = useState<'channel' | 'video' | null>(null);
   const [motorStatus, setMotorStatus] = useState<boolean>(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
+  // ── Data State ──
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [dbChannels, setDbChannels] = useState<any[]>([]);
+  const [promptTemplates, setPromptTemplates] = useState<any[]>([]);
+  const [geminiKey, setGeminiKey] = useState('');
+  const [isKeySaved, setIsKeySaved] = useState(false);
+  const [loadedConversations, setLoadedConversations] = useState<Record<string, boolean>>({});
+
+  const fetchDbChannels = useCallback(async () => {
+    try {
+      const res = await fetch('/api/channels');
+      if (res.ok) {
+        const data = await res.json();
+        setDbChannels(data);
+      }
+    } catch (e) {
+      console.warn('Error al cargar canales de BD:', e);
+    }
+  }, []);
+
+  const auditWorkspaceChannels = async () => {
+    try {
+      const audit = await ControladorClient.auditChannels();
+      const maxChannels = userProfile?.maxChannels ?? 1;
+      if (audit && Array.isArray(audit.channels)) {
+        if (userProfile?.role !== 'ADMIN' && audit.channels.length > maxChannels) {
+          setCleanupFolders(audit.channels);
+          setIsCleanupModalOpen(true);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not audit channels:", e);
+    }
+  };
+
   const loadWorkspaceTree = async (path: string) => {
     try {
       const data = await ControladorClient.getWorkspace(path);
       setWorkspaceTree(data.tree || []);
+      auditWorkspaceChannels();
     } catch (error) {
       console.warn("Could not load workspace tree:", error);
+    }
+  };
+
+  const handleCreatePendingFolder = async (channel: any) => {
+    const toastId = toast.loading(`Creando estructura de carpetas para "${channel.name}"...`);
+    try {
+      await ControladorClient.createChannel(channel.name, channel.niche || channel.name, workspacePath || undefined);
+      await fetch('/api/channels', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: channel.id, folderStatus: 'CREATED' })
+      });
+      toast.success(`¡Estructura de carpetas para "${channel.name}" creada exitosamente!`, { id: toastId });
+      setPendingChannels(prev => prev.filter(c => c.id !== channel.id));
+      await fetchDbChannels();
+      if (workspacePath) loadWorkspaceTree(workspacePath);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al crear carpeta física', { id: toastId });
     }
   };
 
@@ -149,6 +208,29 @@ export default function Dashboard() {
     }
   }, [motorStatus]);
 
+  // Alerta interactiva si el motor se conecta y existen canales pendientes de crear en disco
+  useEffect(() => {
+    if (motorStatus && dbChannels.length > 0) {
+      const pending = dbChannels.filter(ch => ch.folderStatus === 'PENDING');
+      setPendingChannels(pending);
+      if (pending.length > 0) {
+        const first = pending[0];
+        toast.info(
+          lang === 'es'
+            ? `⚡ Motor conectado: Tienes canales pendientes en disco. ¿Crear carpeta de "${first.name}"?`
+            : `⚡ Motor online: You have channels pending on disk. Create folder for "${first.name}"?`,
+          {
+            duration: 8000,
+            action: {
+              label: lang === 'es' ? 'Crear carpeta' : 'Create folder',
+              onClick: () => handleCreatePendingFolder(first),
+            }
+          }
+        );
+      }
+    }
+  }, [motorStatus, dbChannels]);
+
   const handleLinkWorkspace = (path: string) => {
     localStorage.setItem('autoprod_workspace_path', path);
     setWorkspacePath(path);
@@ -157,6 +239,10 @@ export default function Dashboard() {
   };
 
   const handleCreateNode = async (parentPath: string, folderName: string, subfolders: string[]) => {
+    if (creationMode === 'channel') {
+      await handleCreateChannel(parentPath, folderName, subfolders);
+      return;
+    }
     try {
       await ControladorClient.createFolder(parentPath, folderName, subfolders);
       if (workspacePath) {
@@ -180,6 +266,7 @@ export default function Dashboard() {
           name: channelName,
           localPath: channelLocalPath,
           niche: channelName,
+          folderStatus: motorStatus ? 'CREATED' : 'PENDING',
         })
       });
 
@@ -195,12 +282,18 @@ export default function Dashboard() {
         throw new Error(errorData.error || 'Error al registrar el canal en base de datos');
       }
 
-      // 2. Si el registro en BD fue exitoso, crear las carpetas físicas en disco local
-      await ControladorClient.initVideoWorkspace(basePath, channelName, "Estructura_Base", folders);
-      toast.success(lang === 'es' ? 'Canal y carpetas creadas correctamente' : 'Channel and folders created successfully', { id: toastId });
+      // 2. Si el motor local está encendido, crear las carpetas físicas con sus plantillas completas
+      if (motorStatus) {
+        await ControladorClient.createChannel(channelName, channelName, basePath);
+        toast.success(lang === 'es' ? 'Canal y carpetas creadas correctamente' : 'Channel and folders created successfully', { id: toastId });
+      } else {
+        toast.info(lang === 'es'
+          ? `Canal "${channelName}" registrado en tu cuenta. Enciende el motor local para crear automáticamente su carpeta en disco.`
+          : `Channel "${channelName}" registered. Turn on the local motor to create its folder on disk.`, { id: toastId, duration: 7000 });
+      }
 
       await fetchDbChannels();
-      if (workspacePath) loadWorkspaceTree(workspacePath);
+      if (workspacePath && motorStatus) loadWorkspaceTree(workspacePath);
     } catch (err: any) {
       toast.error(err.message, { id: toastId });
     }
@@ -270,26 +363,6 @@ export default function Dashboard() {
   const [isChatOpen, setIsChatOpen] = useState<boolean>(true);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
   const [rightChatWidth, setRightChatWidth] = useState<number>(420);
-
-  // ── Data State ──
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [dbChannels, setDbChannels] = useState<any[]>([]);
-  const [promptTemplates, setPromptTemplates] = useState<any[]>([]);
-  const [geminiKey, setGeminiKey] = useState('');
-  const [isKeySaved, setIsKeySaved] = useState(false);
-  const [loadedConversations, setLoadedConversations] = useState<Record<string, boolean>>({});
-
-  const fetchDbChannels = useCallback(async () => {
-    try {
-      const res = await fetch('/api/channels');
-      if (res.ok) {
-        const data = await res.json();
-        setDbChannels(data);
-      }
-    } catch (e) {
-      console.warn('Error al cargar canales de BD:', e);
-    }
-  }, []);
 
   // ── Derived Variables ──
   const activeConversation = conversations.find(c => c.id === activeConversationId);
@@ -584,10 +657,8 @@ export default function Dashboard() {
         else if (model.includes('gemini')) provider = 'gemini';
       }
 
-      if (provider === 'openai') friendlyModelName = actualModel.includes('mini') ? 'GPT-4o Mini' : 'GPT-4o';
-      else if (provider === 'gemini') friendlyModelName = 'Gemini Flash';
-      else if (provider === 'anthropic') friendlyModelName = 'Claude 3.5 Sonnet';
-      else if (provider === 'imagen3') friendlyModelName = 'Imagen 3';
+      friendlyModelName = 'AutoProd';
+      let resolvedModelName = 'AutoProd';
 
       const startTime = Date.now();
       const tempAiMsg: Message = {
@@ -672,6 +743,9 @@ export default function Dashboard() {
           // Read the JSON response from the AI (non-streaming)
           const data = await res.json();
           aiResponseText = data.text || '';
+          if (data.modelName) {
+            resolvedModelName = data.modelName;
+          }
 
           if (typeof data.newBalance === 'number') {
             setCurrentCredits(data.newBalance);
@@ -687,12 +761,15 @@ export default function Dashboard() {
             });
           }
 
-          // Actualizar inmediatamente el árbol del workspace si la IA ejecutó acciones o devolvió respuesta
+          // Actualizar inmediatamente el árbol del workspace y los canales si la IA ejecutó acciones o devolvió respuesta
           if (workspacePath) {
             loadWorkspaceTree(workspacePath);
           }
-          if (data.workspaceModified) {
-            toast.success(lang === 'es' ? 'Workspace sincronizado con los cambios de la IA' : 'Workspace synchronized with AI changes');
+          if (data.workspaceModified || data.channelId) {
+            fetchChannels();
+            if (data.workspaceModified) {
+              toast.success(lang === 'es' ? 'Workspace sincronizado con los cambios de la IA' : 'Workspace synchronized with AI changes');
+            }
           }
 
           // Update UI with AI response and bind channelId if newly detected
@@ -733,7 +810,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, checklist, aiResponseText, modelName: actionPreview?.agent || friendlyModelName }),
+        body: JSON.stringify({ text, checklist, aiResponseText, modelName: actionPreview?.agent || resolvedModelName }),
       });
 
       if (res.ok) {
@@ -743,7 +820,7 @@ export default function Dashboard() {
           sender: 'gemini',
           text: data.geminiMessage.text,
           timestamp: new Date(data.geminiMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          modelName: data.modelName || friendlyModelName,
+          modelName: resolvedModelName,
           generationTimeMs,
           isGenerating: false
         };
@@ -1280,6 +1357,19 @@ export default function Dashboard() {
         onCreateNode={handleCreateNode}
         parentPath={modalParentPath}
         creationMode={creationMode}
+      />
+
+      {/* Workspace Channel Governance & Cleanup Modal */}
+      <WorkspaceCleanupModal
+        isOpen={isCleanupModalOpen}
+        onClose={() => setIsCleanupModalOpen(false)}
+        folders={cleanupFolders}
+        maxAllowed={userProfile?.maxChannels ?? 1}
+        planDisplayName={currentPlanName === 'STARTER' ? 'Plan Básico (Basic)' : currentPlanName === 'PRO' ? 'Plan Pro' : currentPlanName === 'ENTERPRISE' ? 'Plan Enterprise' : 'Prueba Gratuita'}
+        onCleanupComplete={async () => {
+          if (workspacePath) await loadWorkspaceTree(workspacePath);
+          await fetchDbChannels();
+        }}
       />
 
       {/* Confirm Delete Modal */}

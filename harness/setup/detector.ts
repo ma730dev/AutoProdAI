@@ -41,13 +41,28 @@ export function getLocalBinPath(): string | null {
 export function getWorkspacePath(): string | null {
   const root = getAutoProdRoot();
   if (!root) return null;
-  if (fsSync.existsSync(path.join(root, 'workspace'))) {
-    return path.join(root, 'workspace');
+
+  let youtubeDir: string;
+  if (path.basename(root).toLowerCase() === 'youtube') {
+    youtubeDir = root;
+  } else if (fsSync.existsSync(path.join(root, 'workspace', 'youtube'))) {
+    youtubeDir = path.join(root, 'workspace', 'youtube');
+  } else if (fsSync.existsSync(path.join(root, 'workspace'))) {
+    youtubeDir = path.join(root, 'workspace', 'youtube');
+  } else if (fsSync.existsSync(path.join(root, 'youtube'))) {
+    youtubeDir = path.join(root, 'youtube');
+  } else {
+    youtubeDir = path.join(root, 'workspace', 'youtube');
   }
-  if (fsSync.existsSync(path.join(root, 'youtube'))) {
-    return path.join(root, 'youtube');
-  }
-  return root;
+
+  // Asegurar existencia física de la carpeta youtube
+  try {
+    if (!fsSync.existsSync(youtubeDir)) {
+      fsSync.mkdirSync(youtubeDir, { recursive: true });
+    }
+  } catch {}
+
+  return youtubeDir;
 }
 
 export async function detectDependencies(): Promise<DependencyInfo[]> {

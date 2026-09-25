@@ -201,24 +201,6 @@ export default function ChatPanel({
     c.name.toLowerCase() === activeConversation?.channelId?.toLowerCase()
   );
 
-  const markdownComponents = {
-    code({ node, inline, className, children, ...props }: any) {
-      const match = /language-(\w+)/.exec(className || '');
-      const codeLang = match ? match[1] : '';
-      if (!inline && (codeLang === 'interactive-question' || codeLang === 'interactive_question' || codeLang === 'ask_question' || codeLang === 'question')) {
-        const jsonContent = String(children).replace(/\n$/, '');
-        return (
-          <InteractiveQuestionCard
-            dataJson={jsonContent}
-            onSelect={(selectedText) => {
-              onSend(selectedText);
-            }}
-          />
-        );
-      }
-      return <code className={className} {...props}>{children}</code>;
-    }
-  };
 
   if (showHistoryView) {
     const filteredConversations = conversations.filter(c =>
@@ -460,6 +442,71 @@ export default function ChatPanel({
     );
   }
 
+  // ── Componentes personalizados de Markdown para el chat de AutoProd ──
+  const markdownComponents = {
+    img: ({ src, alt, ...props }: any) => {
+      if (!src) return null;
+      return (
+        <div className="my-3 rounded-xl overflow-hidden border border-zinc-700/60 bg-zinc-950/80 shadow-2xl group relative max-w-lg">
+          <img
+            src={src}
+            alt={alt || 'Imagen generada por AutoProd'}
+            className="w-full max-h-[360px] object-contain mx-auto transition-transform duration-300 group-hover:scale-[1.01]"
+            loading="lazy"
+            {...props}
+          />
+          <div className="p-2.5 bg-zinc-900/90 border-t border-zinc-800/80 flex items-center justify-between text-xs text-zinc-400">
+            <span className="font-medium truncate max-w-[70%] flex items-center gap-1.5">
+              <span>🎨</span> {alt || 'Miniatura / Arte AutoProd'}
+            </span>
+            <a
+              href={src}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] font-semibold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <span>Ver HD</span>
+              <span>↗</span>
+            </a>
+          </div>
+        </div>
+      );
+    },
+    code: ({ node, inline, className, children, ...props }: any) => {
+      const match = /language-([a-zA-Z0-9_-]+)/.exec(className || '');
+      const codeString = String(children).replace(/\n$/, '');
+      const langType = match ? match[1].toLowerCase().replace(/-/g, '_') : '';
+
+      const isInteractiveBlock = 
+        langType === 'interactive_question' || 
+        langType === 'interactive_card' || 
+        langType === 'interactive_form' ||
+        langType === 'questionnaire' ||
+        langType === 'ask_question' ||
+        langType === 'question' ||
+        langType === 'form' ||
+        (langType === 'json' && (codeString.includes('"question"') || codeString.includes('"questions"')));
+
+      if (!inline && isInteractiveBlock) {
+        return (
+          <div className="my-3">
+            <InteractiveQuestionCard
+              dataJson={codeString}
+              onSelect={(selectedText) => onSend(selectedText)}
+              disabled={isGenerating}
+            />
+          </div>
+        );
+      }
+
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col relative h-full bg-[#0d0d10]">
       {/* ── Copilot Header Bar ── */}
@@ -608,7 +655,9 @@ export default function ChatPanel({
                       🧠 {lang === 'es' ? 'Pensamiento Profundo' : 'Deep Thinking'}
                     </span>
                   )}
-                  {msg.modelName && <span>🤖 {msg.modelName}</span>}
+                  <span className="text-zinc-400 font-medium flex items-center gap-1">
+                    ✨ AutoProd
+                  </span>
                   {msg.isGenerating && <span className="text-emerald-400 font-bold">⏳ {(elapsedMs / 1000).toFixed(1)}s</span>}
                   {!msg.isGenerating && msg.generationTimeMs && <span>⏱️ {(msg.generationTimeMs / 1000).toFixed(2)}s</span>}
                 </span>

@@ -35,6 +35,7 @@ Esta carpeta contiene el detalle de las mecánicas centrales y el seguimiento de
 👉 **[🎯 Master Feature Tracker & Product Backlog](file:///e:/autoprod/docs/features/README.md):** Tablero de control de alcance, estado de tareas (`✅ HECHO`, `🔄 EN PROGRESO`, `📋 PLANIFICADO`, `💡 IDEA`) y banco de ideas.
 
 #### 🏛️ Contexto Macro de AutoProd
+- 📄 **[Documento Ejecutivo & SRS de AutoProd](file:///e:/autoprod/docs/SRS_AUTOPROD_EJECUTIVO.md):** Especificación formal de requerimientos, modelo $0 Server Cost, arquitectura híbrida y gobernanza.
 - 🚀 **[AutoProd: Ficha Técnica Macro](file:///e:/autoprod/docs/features/AutoProd/ficha_tecnica.md)** \| **[AutoProd: Idea (Lo que Tenemos vs. Hacia Dónde Vamos)](file:///e:/autoprod/docs/features/AutoProd/idea.md)**: Arquitectura completa de 2 capas y la visión estratégica para creadores y agencias.
 
 #### 📦 Módulos Específicos
@@ -57,6 +58,8 @@ Esta carpeta contiene el detalle de las mecánicas centrales y el seguimiento de
 - 📦 **Instalador Oficial Standalone (FEAT-17):** [Ficha Técnica](file:///e:/autoprod/docs/features/standalone_installer/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/standalone_installer/idea.md)
 - 🎥 **VideoProjects, Hub & Cuentas Vinculadas (FEAT-18):** [Ficha Técnica](file:///e:/autoprod/docs/features/video_projects/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/video_projects/idea.md)
 - 🧠 **Router Semántico Jerárquico & Telemetría Flywheel (FEAT-19):** [Ficha Técnica](file:///e:/autoprod/docs/features/semantic_router_and_telemetry/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/semantic_router_and_telemetry/idea.md)
+- ✨ **Orquestación Creativa, Briefing de Ideación, Negociación de Créditos & Tool generar_imagen (FEAT-20):** [Ficha Técnica](file:///e:/autoprod/docs/features/creative_orchestration_and_image_tools/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/creative_orchestration_and_image_tools/idea.md)
+- 🏛️ **Gobernanza de Espacio de Trabajo, Rama youtube & Límites de Canales (FEAT-21):** [Ficha Técnica](file:///e:/autoprod/docs/features/workspace_governance_and_channel_limits/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/workspace_governance_and_channel_limits/idea.md)
 - 🎵 **Generador de Música IA & Soundscapes (IDEA):** [Ficha Técnica](file:///e:/autoprod/docs/features/music_generator/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/music_generator/idea.md)
 - 📹 **AI Video Studio & B-Roll Auto-Finder (IDEA):** [Ficha Técnica](file:///e:/autoprod/docs/features/ai_video_and_broll/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/ai_video_and_broll/idea.md)
 

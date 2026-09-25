@@ -36,9 +36,108 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/6] Creando estructura de directorios en: !INSTALL_DIR!
+echo [2/6] Creando estructura de directorios y recursos de canal en: !INSTALL_DIR!
 if not exist "!INSTALL_DIR!\bin" mkdir "!INSTALL_DIR!\bin"
 if not exist "!INSTALL_DIR!\workspace" mkdir "!INSTALL_DIR!\workspace"
+if not exist "!INSTALL_DIR!\workspace\youtube" mkdir "!INSTALL_DIR!\workspace\youtube"
+
+:: Inicializar rama obligatoria youtube y plantilla de recursos Canal_1
+set "CANAL1_DIR=!INSTALL_DIR!\workspace\youtube\Canal_1"
+if not exist "!CANAL1_DIR!\InfoCanal" mkdir "!CANAL1_DIR!\InfoCanal"
+if not exist "!CANAL1_DIR!\Guiones" mkdir "!CANAL1_DIR!\Guiones"
+if not exist "!CANAL1_DIR!\Videos" mkdir "!CANAL1_DIR!\Videos"
+if not exist "!CANAL1_DIR!\Miniatura" mkdir "!CANAL1_DIR!\Miniatura"
+if not exist "!CANAL1_DIR!\Musica" mkdir "!CANAL1_DIR!\Musica"
+if not exist "!CANAL1_DIR!\Imagenes" mkdir "!CANAL1_DIR!\Imagenes"
+
+:: Recursos y plantillas Markdown base
+if not exist "!CANAL1_DIR!\InfoCanal\Contexto_canal.md" (
+(
+echo # Contexto y ADN del Canal: Canal_1
+echo.
+echo ## 🎯 Nicho y Audiencia Objetivo
+echo - **Temática / Nicho:** Temática Principal del Canal
+echo - **Público Objetivo:** Creadores y entusiastas del nicho
+echo - **Tono de Voz:** Cercano, profesional y dinámico
+echo.
+echo ## 📋 Directivas de Producción y Marca
+echo - **Estilo visual:** Moderno, limpio y minimalista
+echo - **Duración promedio:** 8 - 15 minutos
+echo - **Frecuencia:** Semanal
+) > "!CANAL1_DIR!\InfoCanal\Contexto_canal.md"
+)
+
+if not exist "!CANAL1_DIR!\InfoCanal\Metricas_canal.md" (
+(
+echo # Métricas y Rendimiento del Canal: Canal_1
+echo.
+echo ^| Fecha ^| Video ^| Vistas ^| CTR Miniatura ^| Retención Media ^|
+echo ^|---|---|---|---|---|
+echo ^| Registro ^| Video 1 ^(Base^) ^| - ^| - ^| - ^|
+) > "!CANAL1_DIR!\InfoCanal\Metricas_canal.md"
+)
+
+if not exist "!CANAL1_DIR!\InfoCanal\Historial_canal.md" (
+(
+echo # Historial de Contenido y Banco de Ideas: Canal_1
+echo.
+echo ## 📌 Temas Cubiertos
+echo - [x] Apertura e inicialización del canal Canal_1
+echo.
+echo ## 💡 Banco de Ideas Futuras
+echo - Idea 1: Introducción a la temática y fundamentos clave
+echo - Idea 2: Guía práctica paso a paso para creadores
+echo - Idea 3: Análisis de tendencias y errores comunes
+) > "!CANAL1_DIR!\InfoCanal\Historial_canal.md"
+)
+
+if not exist "!CANAL1_DIR!\Guiones\Plantilla_Guion.md" (
+(
+echo # Guion: [Título del Video para Canal_1]
+echo.
+echo ## 🎣 Gancho Inicial ^(0:00 - 0:30^)
+echo - Planteamiento del problema y por qué este contenido es indispensable.
+echo.
+echo ## 📖 Desarrollo Principal ^(0:30 - 7:00^)
+echo - Punto 1: Concepto clave y contexto
+echo - Punto 2: Demostración práctica y desglose de valor
+echo - Punto 3: Conclusión accionable
+echo.
+echo ## 🚀 Llamado a la Acción y Cierre ^(7:00 - 8:00^)
+echo - Pregunta para interacción en comentarios y cierre de video.
+) > "!CANAL1_DIR!\Guiones\Plantilla_Guion.md"
+)
+
+if not exist "!CANAL1_DIR!\Videos\README.md" (
+(
+echo # Videos y Clips ^(Canal_1^)
+echo Almacenamiento de metraje bruto, grabaciones y exportaciones finales.
+) > "!CANAL1_DIR!\Videos\README.md"
+)
+
+if not exist "!CANAL1_DIR!\Miniatura\Ideas_Miniaturas.md" (
+(
+echo # Conceptos de Miniaturas: Canal_1
+echo.
+echo - **Concepto 1:** Expresión de alto impacto con elemento central de contraste.
+echo - **Tipografía:** Máximo 3 palabras grandes y legibles en dispositivos móviles.
+echo - **Colores:** Tonos vibrantes sobre fondo oscuro.
+) > "!CANAL1_DIR!\Miniatura\Ideas_Miniaturas.md"
+)
+
+if not exist "!CANAL1_DIR!\Musica\README.md" (
+(
+echo # Música de Fondo ^(Canal_1^)
+echo Pistas musicales y efectos sonoros libres de derechos de autor.
+) > "!CANAL1_DIR!\Musica\README.md"
+)
+
+if not exist "!CANAL1_DIR!\Imagenes\README.md" (
+(
+echo # Recursos Gráficos e Imágenes ^(Canal_1^)
+echo Banners, texturas, capturas y miniaturas generadas con IA.
+) > "!CANAL1_DIR!\Imagenes\README.md"
+)
 
 :: Detectar si existe el ejecutable compilado autoprod-motor.exe
 set "MOTOR_EXE="
@@ -132,7 +231,7 @@ echo [5/6] Generando configuracion y lanzador...
 
 (
 echo {
-echo   "basePath": "!INSTALL_DIR:\=\\!\\workspace",
+echo   "basePath": "!INSTALL_DIR:\=\\!\\workspace\\youtube",
 echo   "binPath": "!INSTALL_DIR:\=\\!\\bin",
 echo   "version": "1.0.0"
 echo }

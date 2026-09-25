@@ -102,6 +102,7 @@ namespace public {
     name             String
     localPath        String?
     niche            String?
+    folderStatus     String?        @default("PENDING")
     userId           Uuid
     user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
     videos           Video[]

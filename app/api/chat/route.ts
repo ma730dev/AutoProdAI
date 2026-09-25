@@ -38,12 +38,33 @@ export async function POST(req: Request) {
     const body = await req.json();
     const messages = body.messages;
     const provider = body.provider || 'openai';
-    const model = body.model === 'default' || !body.model ? 'gpt-4o-mini' : body.model;
+    let model = body.model === 'default' || !body.model ? 'gpt-4o-mini' : body.model;
     const { workspacePath, channelId, confirmCreditUsage, deepThinking } = body;
-    const isDeepThinking = Boolean(deepThinking);
+    let isDeepThinking = Boolean(deepThinking);
 
     if (!messages) {
       return NextResponse.json({ error: 'Messages are required' }, { status: 400 });
+    }
+
+    // ── DETECCIÓN DE CONSENTIMIENTO EXPLÍCITO DE CRÉDITOS EN EL CHAT ──
+    const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user');
+    const lastUserTextLower = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content.toLowerCase() : '';
+
+    const isExplicitCreditConsent = 
+      Boolean(confirmCreditUsage) ||
+      lastUserTextLower.includes('acepto usar') ||
+      lastUserTextLower.includes('acepto los créditos') ||
+      lastUserTextLower.includes('acepto los 3 créditos') ||
+      lastUserTextLower.includes('acepto usar créditos') ||
+      lastUserTextLower.includes('acepto usar gpt-4o') ||
+      lastUserTextLower.includes('con gpt-4o') ||
+      lastUserTextLower.includes('usar gpt-4o') ||
+      lastUserTextLower.includes('procede con gpt-4o') ||
+      (lastUserTextLower.includes('acepto') && (lastUserTextLower.includes('crédito') || lastUserTextLower.includes('créditos')));
+
+    if (isExplicitCreditConsent && (model === 'gpt-4o-mini' || model === 'default')) {
+      model = 'gpt-4o';
+      isDeepThinking = true;
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -200,9 +221,9 @@ export async function POST(req: Request) {
         }
       }
 
-      // Confirmación de consumo (solo para modelos pesados con costo > 1 si no ha confirmado)
-      // En la prueba gratuita de 1 crédito en gpt-4o-mini, el consumo es directo y fluido sin interrumpir cada mensaje.
-      if (requiredCredits > 1 && !confirmCreditUsage) {
+      // Confirmación de consumo (solo para modelos pesados con costo > 1 si no ha confirmado ni consentido)
+      // Si el usuario consintió explícitamente en el chat ("acepto usar 3 créditos"), procede directamente sin rebotar.
+      if (requiredCredits > 1 && !confirmCreditUsage && !isExplicitCreditConsent) {
         return NextResponse.json({ 
           requiresConfirmation: true, 
           message: `Esta acción consumirá ${requiredCredits} crédito(s) de la plataforma. ¿Deseas continuar?`
@@ -287,22 +308,35 @@ export async function POST(req: Request) {
         let workspaceStructureSnapshot = '';
         try {
           if (currentWorkspacePath && currentWorkspacePath !== 'No configurado' && fs.existsSync(currentWorkspacePath)) {
+            const SYSTEM_RESERVED_FOLDERS = [
+              'recursos', 'assets', 'node_modules', 'bin', 'public', 'dist', 'build',
+              'temp', 'tmp', 'cache', '.git', '.next', 'workspace', 'youtube', 'docs',
+              'controlador', 'harness', 'prisma', 'src', 'app', 'components', 'lib'
+            ];
+
             const entries = fs.readdirSync(currentWorkspacePath, { withFileTypes: true });
             const structureLines: string[] = [];
             for (const entry of entries) {
               if (entry.name.startsWith('.')) continue;
               if (entry.isDirectory()) {
-                if (!existingChannels.includes(entry.name)) {
-                  existingChannels.push(entry.name);
-                }
+                const isReserved = SYSTEM_RESERVED_FOLDERS.includes(entry.name.toLowerCase());
                 const subPath = path.join(currentWorkspacePath, entry.name);
+                const hasInfoCanal = fs.existsSync(path.join(subPath, 'InfoCanal'));
+
+                // Solo se considera CANAL si no es una carpeta reservada y contiene InfoCanal/
+                if (!isReserved && hasInfoCanal) {
+                  if (!existingChannels.includes(entry.name)) {
+                    existingChannels.push(entry.name);
+                  }
+                }
+
                 let subDirs: string[] = [];
                 try {
                   subDirs = fs.readdirSync(subPath, { withFileTypes: true })
                     .filter(e => !e.name.startsWith('.'))
                     .map(e => `${e.isDirectory() ? '📁' : '📄'} ${e.name}`);
                 } catch { /* ignorar errores de permisos */ }
-                structureLines.push(`• Canal/Carpeta "${entry.name}": [${subDirs.join(', ') || 'vacío'}]`);
+                structureLines.push(`• ${hasInfoCanal ? 'Canal' : 'Carpeta'} "${entry.name}": [${subDirs.join(', ') || 'vacío'}]`);
               } else {
                 structureLines.push(`• Archivo en raíz: "${entry.name}"`);
               }
@@ -428,7 +462,7 @@ export async function POST(req: Request) {
               queryText: userQueryText,
               openAiApiKey: embeddingKey,
               supabaseClient: supabase,
-              defaultThreshold: 0.85
+              defaultThreshold: 0.78
             });
           } catch (routerErr: any) {
             console.warn('[SemanticRouter] Error en evaluación previa:', routerErr.message);
@@ -456,7 +490,7 @@ export async function POST(req: Request) {
 
             return NextResponse.json({
               text: fastText,
-              modelName: 'FastPath (Semantic Router)',
+              modelName: 'AutoProd',
               workspaceModified: false,
               executedTools: ['listar_canales'],
               isFastPath: true,
@@ -497,7 +531,7 @@ export async function POST(req: Request) {
 
               return NextResponse.json({
                 text: fastText,
-                modelName: 'FastPath (Semantic Router)',
+                modelName: 'AutoProd',
                 workspaceModified: false,
                 executedTools: ['consultar_proyecto_video'],
                 isFastPath: true,
@@ -543,7 +577,7 @@ export async function POST(req: Request) {
 
               return NextResponse.json({
                 text: fastText,
-                modelName: 'FastPath (Semantic Router)',
+                modelName: 'AutoProd',
                 workspaceModified: false,
                 executedTools: ['listar_proyectos_video'],
                 isFastPath: true,
@@ -583,7 +617,7 @@ export async function POST(req: Request) {
 
             return NextResponse.json({
               text: fastText,
-              modelName: 'FastPath (Semantic Router)',
+              modelName: 'AutoProd',
               workspaceModified: false,
               executedTools: ['estado_sistema'],
               isFastPath: true,
@@ -740,23 +774,61 @@ Si el usuario dice que desea crear o producir un video pero no ha especificado c
           systemPrompt += generalCapabilitiesDirective;
         }
 
-        const interactiveQuestionsDirective = `\n\n=== INTERFAZ DE PREGUNTAS INTERACTIVAS (INTERACTIVE QUESTION CARDS) ===
-Cuando necesites que el creador elija entre opciones (ej. elegir modelo de IA para redactar un documento con su costo aproximado en créditos, confirmar si desea carpetas adicionales, o seleccionar entre 2 o 3 propuestas de títulos/temas), puedes incluir en tu mensaje un bloque interactivo con sintaxis:
+        const interactiveQuestionsDirective = `\n\n=== INTERFAZ DE PREGUNTAS Y FORMULARIOS INTERACTIVOS (INTERACTIVE QUESTION FORM) ===
+⛔ ESTÁ ESTRICTAMENTE PROHIBIDO:
+- Dibujar cajas de texto con caracteres ASCII o símbolos de bordes (ej: ┌, ─, │, └, etc.).
+- Simular botones escribiendo texto entre corchetes o con emojis (ej: "[✅ Acepto usar créditos]", "[⚡ Continuar]").
+- Preguntar de forma desordenada múltiples preguntas abiertas en texto plano cuando requieras estructurar una decisión.
+
+✅ CONDUCTA OBLIGATORIA:
+Siempre que requieras que el usuario:
+1. Elija entre opciones de modelo/créditos (ej. consentir usar GPT-4o vs continuar en modo estándar gratis).
+2. Responda a un briefing guiado por pasos (Wizard de 1 a 3 preguntas: nicho, enfoque, canales de referencia).
+3. Seleccione entre 2 o 3 conceptos o títulos sugeridos.
+
+DEBES incluir al final de tu mensaje un bloque interactivo con sintaxis \`\`\`interactive-question con JSON válido:
+
+Ejemplo de 1 sola pregunta:
 \`\`\`interactive-question
 {
-  "id": "identificador_unico",
-  "question": "Pregunta concisa y directa",
-  "description": "Explicación breve del contexto o decisión",
+  "id": "decision_modelo",
+  "question": "¿Deseas procesar esta tarea en profundidad con GPT-4o?",
+  "description": "Se analizarán tendencias, retención y métricas avanzadas. Costará 3 créditos.",
   "options": [
-    { "id": "opt1", "label": "Nombre de la opción 1", "badge": "⚡ 0 créditos (Gratis)", "description": "Detalle breve", "recommended": true },
-    { "id": "opt2", "label": "Nombre de la opción 2", "badge": "🧠 ~2 créditos", "description": "Detalle breve" }
+    { "id": "opt1", "label": "Acepto usar 3 créditos con GPT-4o", "badge": "🧠 3 créditos", "recommended": true },
+    { "id": "opt2", "label": "Continuar en modo estándar (Orientación guiada)", "badge": "⚡ 0 créditos" }
   ],
-  "isMultiSelect": false,
   "allowCustomInput": true,
-  "customInputPlaceholder": "Escribe otra opción personalizada..."
+  "customInputPlaceholder": "Escribe otra respuesta o directiva..."
 }
 \`\`\`
-La interfaz de AutoProd renderizará automáticamente este bloque como una tarjeta interactiva con botones cliqueables de 1-clic, permitiendo al creador tomar decisiones fluidas sin tener que tipear.`;
+
+Ejemplo de varias preguntas en pasos (Wizard secuencial):
+\`\`\`interactive-question
+{
+  "title": "Configuración de Nuevo Canal",
+  "questions": [
+    {
+      "question": "¿Cuál será la temática o nicho central del canal?",
+      "options": ["Misterio y Crímenes Reales", "Finanzas y Negocios Digitales", "Ciencia y Curiosidades", "Desarrollo Personal"]
+    },
+    {
+      "question": "¿Tienes algún canal de YouTube de referencia o inspiración?",
+      "options": ["Deseo que me propongas canales top del nicho", "No tengo referencias aún"],
+      "allowCustomInput": true,
+      "customInputPlaceholder": "Escribe el nombre o link del canal de referencia..."
+    },
+    {
+      "question": "¿Deseas que analicemos la estrategia con GPT-4o?",
+      "options": [
+        { "label": "Sí, activar GPT-4o para plan maestro", "badge": "🧠 3 créditos", "recommended": true },
+        { "label": "No, continuar en modo estándar", "badge": "⚡ Gratis" }
+      ]
+    }
+  ]
+}
+\`\`\`
+La interfaz del chat de AutoProd interceptará este bloque y renderizará automáticamente un formulario nativo e interactivo integrado en el chat con botones, radio buttons y selector de pasos.`;
 
         systemPrompt += interactiveQuestionsDirective;
         
@@ -1313,6 +1385,23 @@ DIRECTIVA ESTRATÉGICA PARA PENSAMIENTO PROFUNDO:
       }
     }
 
+    // ── GARANTÍA DE RENDERIZADO VISUAL PARA IMÁGENES GENERADAS ──
+    if (result.toolResults && Array.isArray(result.toolResults)) {
+      for (const tr of result.toolResults) {
+        if (tr.toolName === 'generar_imagen') {
+          let parsed: any = null;
+          if (typeof tr.result === 'string') {
+            try { parsed = JSON.parse(tr.result); } catch {}
+          } else if (tr.result && typeof tr.result === 'object') {
+            parsed = tr.result;
+          }
+          if (parsed?.imageUrl && !finalOutput.includes(parsed.imageUrl)) {
+            finalOutput += `\n\n![${parsed.tipo || 'Miniatura'}](${parsed.imageUrl})\n`;
+          }
+        }
+      }
+    }
+
     // Detección dinámica de mutaciones en el workspace basada en las herramientas ejecutadas
     const readOnlyToolPrefixes = ['listar_', 'leer_', 'consultar_', 'workspace_default', 'verificar_'];
     const workspaceModified = executedTools.some(toolName => {
@@ -1334,7 +1423,7 @@ DIRECTIVA ESTRATÉGICA PARA PENSAMIENTO PROFUNDO:
 
     return NextResponse.json({ 
       text: finalOutput, 
-      modelName: cleanModel || model,
+      modelName: 'AutoProd',
       workspaceModified,
       executedTools,
       isDeepThinking,

@@ -247,6 +247,70 @@ export class ControladorClient {
   }
 
   /**
+   * Crea un nuevo canal en la rama youtube con su estructura modular completa y plantillas Markdown.
+   */
+  static async createChannel(channelName: string, niche?: string, targetPath?: string) {
+    try {
+      const response = await fetch(`${getControladorUrl()}/workspace/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folder_name: channelName,
+          target_path: targetPath,
+          niche: niche || channelName,
+          is_channel: true,
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error al crear canal');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Controlador Client: createChannel failed', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Audita las carpetas físicas de canales presentes en workspace/youtube.
+   */
+  static async auditChannels() {
+    try {
+      const response = await fetch(`${getControladorUrl()}/workspace/audit_channels`);
+      if (!response.ok) {
+        throw new Error('Error al auditar canales físicos');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Controlador Client: auditChannels failed', error);
+      return null;
+    }
+  }
+
+  /**
+   * Elimina una o múltiples carpetas físicas en el workspace.
+   */
+  static async deleteFolder(paths: string | string[]) {
+    try {
+      const pathList = Array.isArray(paths) ? paths : [paths];
+      const response = await fetch(`${getControladorUrl()}/workspace/delete_folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: pathList }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Error al eliminar carpeta(s)');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Controlador Client: deleteFolder failed', error);
+      throw error;
+    }
+  }
+
+  /**
    * Lee el contenido de un archivo
    */
   static async readFile(path: string): Promise<string> {

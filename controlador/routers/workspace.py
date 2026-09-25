@@ -23,6 +23,127 @@ import unicodedata
 def normalize_str(s: str) -> str:
     return unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8').lower()
 
+def init_channel_template_files(channel_dir: Path, channel_name: str, niche: Optional[str] = None):
+    """Crea la estructura modular completa de un canal con sus carpetas y plantillas Markdown."""
+    try:
+        channel_dir.mkdir(parents=True, exist_ok=True)
+        cname = channel_name.strip()
+        cniche = (niche or cname).strip()
+
+        # 1. Subcarpetas de producción: InfoCanal, Guiones, Videos, Miniatura, Musica, Imagenes
+        subfolders = ["InfoCanal", "Guiones", "Videos", "Miniatura", "Musica", "Imagenes"]
+        for sub in subfolders:
+            (channel_dir / sub).mkdir(parents=True, exist_ok=True)
+
+        # 2. Plantillas en InfoCanal/
+        info_canal = channel_dir / "InfoCanal"
+        contexto_file = info_canal / "Contexto_canal.md"
+        if not contexto_file.exists():
+            contexto_file.write_text(
+                f"# Contexto y ADN del Canal: {cname}\n\n"
+                f"## 🎯 Nicho y Audiencia Objetivo\n"
+                f"- **Temática / Nicho:** {cniche}\n"
+                f"- **Público Objetivo:** Creadores, profesionales y entusiastas interesados en {cniche}\n"
+                f"- **Tono de Voz:** Cercano, profesional, dinámico y de alto valor para el creador\n\n"
+                f"## 📋 Directivas de Producción y Marca\n"
+                f"- **Estilo visual:** Moderno, limpio y minimalista\n"
+                f"- **Duración promedio:** 8 - 15 minutos\n"
+                f"- **Frecuencia:** Constante según cronograma de producción\n",
+                encoding="utf-8"
+            )
+
+        metricas_file = info_canal / "Metricas_canal.md"
+        if not metricas_file.exists():
+            metricas_file.write_text(
+                f"# Métricas y Rendimiento del Canal: {cname}\n\n"
+                f"| Fecha | Video | Vistas | CTR Miniatura | Retención Media |\n"
+                f"|---|---|---|---|---|\n"
+                f"| Registro | Video 1 (Base) | - | - | - |\n",
+                encoding="utf-8"
+            )
+
+        historial_file = info_canal / "Historial_canal.md"
+        if not historial_file.exists():
+            historial_file.write_text(
+                f"# Historial de Contenido y Banco de Ideas: {cname}\n\n"
+                f"## 📌 Temas Cubiertos\n"
+                f"- [x] Apertura e inicialización del canal {cname}\n\n"
+                f"## 💡 Banco de Ideas Futuras\n"
+                f"- Idea 1: Introducción a {cniche} y fundamentos clave\n"
+                f"- Idea 2: Guía práctica paso a paso para creadores\n"
+                f"- Idea 3: Análisis de tendencias y errores comunes\n",
+                encoding="utf-8"
+            )
+
+        # 3. Plantilla en Guiones/
+        guiones = channel_dir / "Guiones"
+        guion_file = guiones / "Plantilla_Guion.md"
+        if not guion_file.exists():
+            guion_file.write_text(
+                f"# Guion: [Título del Video para {cname}]\n\n"
+                f"## 🎣 Gancho Inicial (0:00 - 0:30)\n"
+                f"- Planteamiento del problema y por qué este contenido es indispensable.\n\n"
+                f"## 📖 Desarrollo Principal (0:30 - 7:00)\n"
+                f"- Punto 1: Concepto clave y contexto\n"
+                f"- Punto 2: Demostración práctica y desglose de valor\n"
+                f"- Punto 3: Conclusión accionable\n\n"
+                f"## 🚀 Llamado a la Acción y Cierre (7:00 - 8:00)\n"
+                f"- Pregunta para interacción en comentarios y cierre de video.\n",
+                encoding="utf-8"
+            )
+
+        # 4. Videos/
+        videos = channel_dir / "Videos"
+        videos_readme = videos / "README.md"
+        if not videos_readme.exists():
+            videos_readme.write_text(f"# Videos y Clips ({cname})\nAlmacenamiento de metraje bruto, grabaciones y exportaciones finales.\n", encoding="utf-8")
+
+        # 5. Miniatura/
+        miniatura = channel_dir / "Miniatura"
+        miniatura_ideas = miniatura / "Ideas_Miniaturas.md"
+        if not miniatura_ideas.exists():
+            miniatura_ideas.write_text(
+                f"# Conceptos de Miniaturas: {cname}\n\n"
+                f"- **Concepto 1:** Expresión de alto impacto con elemento central de contraste.\n"
+                f"- **Tipografía:** Máximo 3 palabras grandes y legibles en dispositivos móviles.\n"
+                f"- **Colores:** Tonos vibrantes sobre fondo oscuro.\n",
+                encoding="utf-8"
+            )
+
+        # 6. Musica/
+        musica = channel_dir / "Musica"
+        musica_readme = musica / "README.md"
+        if not musica_readme.exists():
+            musica_readme.write_text(f"# Música de Fondo ({cname})\nPistas musicales y efectos sonoros libres de derechos de autor.\n", encoding="utf-8")
+
+        # 7. Imagenes/
+        imagenes = channel_dir / "Imagenes"
+        imagenes_readme = imagenes / "README.md"
+        if not imagenes_readme.exists():
+            imagenes_readme.write_text(f"# Recursos Gráficos e Imágenes ({cname})\nBanners, texturas, capturas y miniaturas generadas con IA.\n", encoding="utf-8")
+    except Exception as e:
+        print(f"[init_channel_template_files] Error al inicializar plantillas para {channel_name}: {e}")
+
+def ensure_youtube_workspace_and_template(base_ws: Path) -> Path:
+    """Garantiza la existencia de la carpeta 'youtube' y la plantilla inicial de Canal_1 si está vacía."""
+    try:
+        if base_ws.name.lower() == "youtube":
+            youtube_dir = base_ws
+        else:
+            youtube_dir = base_ws / "youtube"
+
+        youtube_dir.mkdir(parents=True, exist_ok=True)
+
+        # Si youtube_dir está vacía de canales, crear Canal_1 con su plantilla completa
+        channel_dirs = [d for d in youtube_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
+        if not channel_dirs:
+            init_channel_template_files(youtube_dir / "Canal_1", "Canal_1", "Temática Principal del Canal")
+
+        return youtube_dir
+    except Exception as e:
+        print(f"[ensure_youtube_workspace_and_template] Error: {e}")
+        return base_ws
+
 def default_workspace_path() -> Path:
     possible_config_paths = []
     if getattr(sys, 'frozen', False):
@@ -42,15 +163,15 @@ def default_workspace_path() -> Path:
                     config = json.load(f)
                     if "basePath" in config and config["basePath"]:
                         bp = Path(config["basePath"]).resolve()
-                        # Si basePath ya apunta al workspace o contiene subcarpeta
-                        if (bp / "youtube").exists():
-                            return (bp / "youtube").resolve()
-                        if bp.name.lower() in ["youtube", "workspace"]:
-                            return bp
-                        return (bp / "workspace").resolve() if (bp / "workspace").exists() else bp
+                        if bp.name.lower() == "youtube":
+                            return ensure_youtube_workspace_and_template(bp)
+                        if (bp / "workspace").exists():
+                            return ensure_youtube_workspace_and_template(bp / "workspace")
+                        return ensure_youtube_workspace_and_template(bp)
             except Exception:
                 pass
-    return (Path.home() / "AutoProdAI" / "workspace").resolve()
+    fallback_ws = (Path.home() / "AutoProdAI" / "workspace").resolve()
+    return ensure_youtube_workspace_and_template(fallback_ws)
 
 
 def resolve_target_dir(base_path: Optional[str] = None, channel_name: Optional[str] = None) -> Path:
@@ -224,9 +345,37 @@ class CreateFolderRequest(BaseModel):
     target_path: Optional[str] = None          # Ruta padre (opcional, si se omite usa ws_root o channel_name)
     folder_name: Optional[str] = None          # Nombre de carpeta individual
     channel_name: Optional[str] = None         # Nombre de canal opcional
+    niche: Optional[str] = None                # Nicho del canal opcional
+    is_channel: Optional[bool] = False         # Si es True, inicializa la plantilla modular completa del canal
     folders: Optional[List[str]] = None        # Múltiples nombres de carpetas a crear en target_path o channel_name
     paths: Optional[List[str]] = None          # Múltiples rutas completas o relativas directas
     subfolders: Optional[List[str]] = []       # Subcarpetas opcionales a crear dentro de cada carpeta
+
+@router.get("/audit_channels")
+def audit_channels():
+    """Retorna la lista de carpetas de canales físicos presentes en workspace/youtube para auditoría y control de límites."""
+    ws_root = default_workspace_path()
+    channels = []
+    try:
+        for item in sorted(ws_root.iterdir(), key=lambda x: x.name.lower()):
+            if item.is_dir() and not item.name.startswith('.'):
+                has_info = (item / "InfoCanal").exists()
+                sub_count = len([s for s in item.iterdir() if s.is_dir() and not s.name.startswith('.')])
+                channels.append({
+                    "name": item.name,
+                    "path": item.resolve().as_posix(),
+                    "has_info_canal": has_info,
+                    "subfolders_count": sub_count,
+                    "created_at": datetime.fromtimestamp(item.stat().st_ctime).isoformat() if hasattr(item.stat(), "st_ctime") else None
+                })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error auditando canales: {str(e)}")
+
+    return {
+        "youtube_root": ws_root.resolve().as_posix(),
+        "total_channels": len(channels),
+        "channels": channels
+    }
 
 @router.post("/create")
 def create_folder(req: CreateFolderRequest):
@@ -257,7 +406,9 @@ def create_folder(req: CreateFolderRequest):
             try:
                 path_obj.mkdir(parents=True, exist_ok=True)
                 created.append(path_obj.as_posix())
-                if req.subfolders:
+                if req.is_channel or path_obj.parent.resolve() == ws_root.resolve():
+                    init_channel_template_files(path_obj, path_obj.name, req.niche)
+                elif req.subfolders:
                     for sub in req.subfolders:
                         (path_obj / sub).mkdir(parents=True, exist_ok=True)
             except Exception as e:
@@ -272,7 +423,9 @@ def create_folder(req: CreateFolderRequest):
             try:
                 folder_path.mkdir(parents=True, exist_ok=True)
                 created.append(folder_path.as_posix())
-                if req.subfolders:
+                if req.is_channel or parent_base.resolve() == ws_root.resolve():
+                    init_channel_template_files(folder_path, f.strip(), req.niche)
+                elif req.subfolders:
                     for sub in req.subfolders:
                         (folder_path / sub).mkdir(parents=True, exist_ok=True)
             except Exception as e:
@@ -284,7 +437,9 @@ def create_folder(req: CreateFolderRequest):
         try:
             folder_path.mkdir(parents=True, exist_ok=True)
             created.append(folder_path.as_posix())
-            if req.subfolders:
+            if req.is_channel or parent_base.resolve() == ws_root.resolve():
+                init_channel_template_files(folder_path, req.folder_name.strip(), req.niche)
+            elif req.subfolders:
                 for sub in req.subfolders:
                     (folder_path / sub).mkdir(parents=True, exist_ok=True)
         except Exception as e:
@@ -296,9 +451,7 @@ def create_folder(req: CreateFolderRequest):
         try:
             channel_path.mkdir(parents=True, exist_ok=True)
             created.append(channel_path.as_posix())
-            if req.subfolders:
-                for sub in req.subfolders:
-                    (channel_path / sub).mkdir(parents=True, exist_ok=True)
+            init_channel_template_files(channel_path, req.channel_name.strip(), req.niche)
         except Exception as e:
             errors.append(f"Error creando canal '{req.channel_name}': {str(e)}")
 

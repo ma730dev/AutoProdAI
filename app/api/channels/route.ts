@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     await ensureDbUser(user.id, user.email);
 
     const body = await req.json().catch(() => ({}));
-    const { name, localPath, niche, description } = body;
+    const { name, localPath, niche, description, folderStatus } = body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return NextResponse.json({ error: 'El nombre del canal es obligatorio.' }, { status: 400 });
@@ -117,14 +117,16 @@ export async function POST(req: Request) {
     }
 
     const supabase = getSupabaseClient();
+    const effectiveFolderStatus = folderStatus || (localPath ? 'CREATED' : 'PENDING');
 
-    // 4. Si ya existe, actualizar datos (localPath, niche)
+    // 4. Si ya existe, actualizar datos (localPath, niche, folderStatus)
     if (existingChannel) {
       const updated = await db.channel.update({
         where: { id: existingChannel.id },
         data: {
           ...(localPath ? { localPath: localPath.trim() } : {}),
           ...(niche ? { niche: niche.trim() } : {}),
+          ...(folderStatus ? { folderStatus } : {}),
         }
       });
 
@@ -144,6 +146,7 @@ export async function POST(req: Request) {
         name: cleanName,
         localPath: localPath ? localPath.trim() : null,
         niche: niche ? niche.trim() : null,
+        folderStatus: effectiveFolderStatus,
       }
     });
 
@@ -168,5 +171,87 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error('Error creating/updating channel:', err);
     return NextResponse.json({ error: err.message || 'Error interno al registrar canal' }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const auth = await getAuthUser();
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
+
+    const body = await req.json().catch(() => ({}));
+    const { id, name, folderStatus, localPath, niche } = body;
+
+    if (!id && !name) {
+      return NextResponse.json({ error: 'Se requiere id o name del canal.' }, { status: 400 });
+    }
+
+    const channel = await db.channel.findFirst({
+      where: {
+        userId: user.id,
+        ...(id ? { id } : { name: { equals: name.trim(), mode: 'insensitive' } })
+      }
+    });
+
+    if (!channel) {
+      return NextResponse.json({ error: 'Canal no encontrado.' }, { status: 404 });
+    }
+
+    const updated = await db.channel.update({
+      where: { id: channel.id },
+      data: {
+        ...(folderStatus ? { folderStatus } : {}),
+        ...(localPath ? { localPath: localPath.trim() } : {}),
+        ...(niche ? { niche: niche.trim() } : {}),
+      }
+    });
+
+    return NextResponse.json({ success: true, channel: updated });
+  } catch (err: any) {
+    console.error('Error updating channel:', err);
+    return NextResponse.json({ error: err.message || 'Error interno al actualizar canal' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const auth = await getAuthUser();
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
+
+    const body = await req.json().catch(() => ({}));
+    const { id, name } = body;
+
+    if (!id && !name) {
+      return NextResponse.json({ error: 'Se requiere id o name del canal para eliminar.' }, { status: 400 });
+    }
+
+    const channel = await db.channel.findFirst({
+      where: {
+        userId: user.id,
+        ...(id ? { id } : { name: { equals: name.trim(), mode: 'insensitive' } })
+      }
+    });
+
+    if (!channel) {
+      return NextResponse.json({ error: 'Canal no encontrado.' }, { status: 404 });
+    }
+
+    // Eliminar de Prisma (cascada a videos, assets, etc.)
+    await db.channel.delete({
+      where: { id: channel.id }
+    });
+
+    // Eliminar channelContext de Supabase si existe
+    try {
+      const supabase = getSupabaseClient();
+      await supabase.from('channelContext').delete().eq('channelId', channel.id);
+    } catch {}
+
+    return NextResponse.json({ success: true, deletedChannelId: channel.id });
+  } catch (err: any) {
+    console.error('Error deleting channel:', err);
+    return NextResponse.json({ error: err.message || 'Error al eliminar canal' }, { status: 500 });
   }
 }

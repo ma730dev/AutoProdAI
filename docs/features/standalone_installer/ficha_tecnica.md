@@ -64,15 +64,15 @@ flowchart TD
 
 ## 🎛️ 3. Especificaciones de Instalación
 
-### Windows (`setup.iss`):
-- **Ubicación:** [`scripts/installer/windows/setup.iss`](file:///e:/autoprod/scripts/installer/windows/setup.iss)
-- **Directorio:** `{autopf}\AutoProdAI`
-- **Componentes:** `autoprod-motor.exe`, `.autoprod-config.json`, `bin/` (`ffmpeg.exe`, `ffprobe.exe`, `yt-dlp.exe`), `workspace/`.
+### Windows (`setup.iss` & `install-windows.bat`):
+- **Ubicación:** [`scripts/installer/windows/setup.iss`](file:///e:/autoprod/scripts/installer/windows/setup.iss) & [`scripts/installer/install-windows.bat`](file:///e:/autoprod/scripts/installer/install-windows.bat)
+- **Directorio:** `{autopf}\AutoProdAI` o ruta elegida por el usuario.
+- **Componentes:** `autoprod-motor.exe`, `.autoprod-config.json` (apuntando a `workspace\youtube`), `bin/` (`ffmpeg.exe`, `ffprobe.exe`, `yt-dlp.exe`), `workspace/youtube/Canal_1/` con los 6 módulos (`InfoCanal/`, `Guiones/`, `Videos/`, `Miniatura/`, `Musica/`, `Imagenes/`) y plantillas Markdown base pre-generadas (`Contexto_canal.md`, `Metricas_canal.md`, `Historial_canal.md`, `Plantilla_Guion.md`, `Ideas_Miniaturas.md`).
 
-### macOS (`build-macos.sh` / `AutoProd-Setup.dmg`):
-- **Ubicación:** [`scripts/build/build-macos.sh`](file:///e:/autoprod/scripts/build/build-macos.sh)
+### macOS (`build-macos.sh` / `AutoProd-Setup.dmg` / `install-macos.sh`):
+- **Ubicación:** [`scripts/build/build-macos.sh`](file:///e:/autoprod/scripts/build/build-macos.sh) & [`scripts/installer/install-macos.sh`](file:///e:/autoprod/scripts/installer/install-macos.sh)
 - **Directorio:** `~/AutoProdAI`
-- **Componentes:** `autoprod-motor`, `start_motor.sh`, `.autoprod-config.json`, `bin/` (`ffmpeg`, `yt-dlp`), `workspace/`.
+- **Componentes:** `autoprod-motor`, `start_motor.sh`, `.autoprod-config.json` (apuntando a `workspace/youtube`), `bin/` (`ffmpeg`, `yt-dlp`), `workspace/youtube/Canal_1/` con la misma estructura canónica de 6 módulos y recursos Markdown iniciales.
 
 ---
 
