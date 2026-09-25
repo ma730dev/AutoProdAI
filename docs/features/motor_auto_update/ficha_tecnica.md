@@ -107,13 +107,24 @@ flowchart TD
 En Windows, un proceso en ejecución bloquea su `.exe`. El motor crea y ejecuta de forma desacoplada (`creationflags=0x00000008` DETACHED_PROCESS) el script auxiliar `update_swap.bat`:
 ```bat
 @echo off
-timeout /t 1 /nobreak >nul
+ping 127.0.0.1 -n 3 >nul
 taskkill /F /PID %1 >nul 2>&1
+
+set /a ATTEMPTS=0
+:retry_swap
+set /a ATTEMPTS+=1
 move /y "autoprod-motor.update.exe" "autoprod-motor.exe" >nul 2>&1
+if errorlevel 1 (
+    if %ATTEMPTS% leq 12 (
+        ping 127.0.0.1 -n 2 >nul
+        goto retry_swap
+    )
+)
+
 start "" "autoprod-motor.exe"
 del "%~f0"
 ```
-El proceso actual llama a `os._exit(0)`, liberando el puerto 8000. El script batch intercambia el archivo e inicia el nuevo motor en menos de 2 segundos.
+El proceso actual llama a `os._exit(0)`, liberando el puerto 8000. El script batch reintenta de forma segura hasta 12 veces (hasta que el kernel de Windows libere los handles) e inicia el nuevo motor en pocos segundos.
 
 ### B. macOS / Linux (UNIX)
 En UNIX, los archivos abiertos admiten desvinculación o reemplazo atómico mediante llamada al sistema `os.replace`:

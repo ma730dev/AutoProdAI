@@ -1,5 +1,5 @@
 #define MyAppName "AutoProd Motor Local"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.5.3"
 #define MyAppPublisher "AutoProd AI"
 #define MyAppURL "https://autoprod.io"
 #define MyAppExeName "autoprod-motor.exe"
@@ -35,6 +35,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\..\..\dist\autoprod-motor.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\..\controlador\version.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\..\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Dirs]
@@ -50,8 +51,8 @@ Name: "{app}\workspace\youtube\Canal_1\Musica"
 Name: "{app}\workspace\youtube\Canal_1\Imagenes"
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\AutoProd Motor"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
+Name: "{autodesktop}\AutoProd Motor"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
@@ -78,6 +79,8 @@ begin
   if CurStep = ssInstall then
   begin
     DeleteFile(ExpandConstant('{autodesktop}\AutoProd Motor.lnk'));
+    DeleteFile(ExpandConstant('{userdesktop}\AutoProd Motor.lnk'));
+    DeleteFile(ExpandConstant('{commondesktop}\AutoProd Motor.lnk'));
   end;
 
   if CurStep = ssPostInstall then
@@ -150,7 +153,7 @@ begin
     ConfigContent := '{' + #13#10 +
       '  "basePath": "' + WorkspacePath + '",' + #13#10 +
       '  "binPath": "' + BinPath + '",' + #13#10 +
-      '  "version": "1.0.0"' + #13#10 +
+      '  "version": "{#MyAppVersion}"' + #13#10 +
       '}';
 
     SaveStringToFile(ConfigFile, ConfigContent, False);

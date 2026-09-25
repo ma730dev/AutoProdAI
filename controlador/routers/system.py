@@ -18,7 +18,7 @@ router = APIRouter(
 )
 
 # Versión canónica fallback del motor local
-DEFAULT_MOTOR_VERSION = "1.5.2"
+DEFAULT_MOTOR_VERSION = "1.5.3"
 
 class UpdateRequest(BaseModel):
     download_url: Optional[str] = None

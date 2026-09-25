@@ -58,6 +58,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist
           New-Item -ItemType Directory -Force -Path bin
           Copy-Item controlador/dist/autoprod-motor.exe dist/autoprod-motor.exe
+          Copy-Item controlador/version.txt dist/version.txt -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force controlador/build -ErrorAction SilentlyContinue
 
       - name: Descargar Binarios Portables (FFmpeg y yt-dlp)
@@ -151,6 +152,8 @@ jobs:
           cp controlador/dist/autoprod-motor dist/autoprod-motor
           chmod +x dist/autoprod-motor
           cp dist/autoprod-motor dist/AutoProdAI-macOS/
+          cp controlador/version.txt dist/AutoProdAI-macOS/version.txt 2>/dev/null || true
+          cp controlador/version.txt dist/version.txt 2>/dev/null || true
 
           # Descargar yt-dlp
           curl -sL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" -o bin/yt-dlp || true
@@ -166,7 +169,7 @@ jobs:
           printf '#!/bin/bash\nDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"\ncd "$DIR"\nexport PATH="$DIR/bin:$PATH"\n./autoprod-motor\n' > dist/AutoProdAI-macOS/start_motor.sh
           chmod +x dist/AutoProdAI-macOS/start_motor.sh
 
-          printf '{\n  "basePath": "$HOME/AutoProdAI/workspace/youtube",\n  "binPath": "$HOME/AutoProdAI/bin",\n  "version": "1.0.0"\n}\n' > dist/AutoProdAI-macOS/.autoprod-config.json
+          printf '{\n  "basePath": "$HOME/AutoProdAI/workspace/youtube",\n  "binPath": "$HOME/AutoProdAI/bin",\n  "version": "1.5.3"\n}\n' > dist/AutoProdAI-macOS/.autoprod-config.json
 
       - name: Limpiar Espacio en Disco
         run: |

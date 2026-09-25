@@ -36,8 +36,8 @@ export async function GET(req: NextRequest) {
       const fallbackData = {
         success: true,
         isLatest: true,
-        tag: 'v1.5.1',
-        version: '1.5.1',
+        tag: 'v1.5.3',
+        version: '1.5.3',
         publishedAt: new Date().toISOString(),
         assets: {
           windowsBinary: `https://github.com/${githubRepo}/releases/latest/download/autoprod-motor.exe`,
