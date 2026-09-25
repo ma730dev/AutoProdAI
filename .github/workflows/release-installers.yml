@@ -49,6 +49,7 @@ jobs:
             --hidden-import "routers.video_looper" `
             --hidden-import "routers.subtitles" `
             --hidden-import "routers.tts" `
+            --hidden-import "routers.system" `
             --hidden-import "hardware" `
             main.py
 
@@ -84,7 +85,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AutoProd-Setup-Windows
-          path: dist/AutoProd-Setup.exe
+          path: |
+            dist/AutoProd-Setup.exe
+            dist/autoprod-motor.exe
           if-no-files-found: error
 
   build-macos:
@@ -121,6 +124,7 @@ jobs:
             --hidden-import "routers.video_looper" \
             --hidden-import "routers.subtitles" \
             --hidden-import "routers.tts" \
+            --hidden-import "routers.system" \
             --hidden-import "hardware" \
             main.py
 
@@ -183,7 +187,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AutoProd-Setup-macOS
-          path: dist/AutoProd-Setup.dmg
+          path: |
+            dist/AutoProd-Setup.dmg
+            dist/autoprod-motor
           if-no-files-found: error
 
   publish-release:
@@ -228,5 +234,7 @@ jobs:
           files: |
             dist/AutoProd-Setup.exe
             dist/AutoProd-Setup.dmg
+            dist/autoprod-motor.exe
+            dist/autoprod-motor
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

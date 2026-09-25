@@ -15,6 +15,9 @@ interface Props {
   workspacePath: string | null;
   workspaceTree: FileNode[];
   motorStatus: boolean;
+  motorUpdateInfo?: { currentVersion: string; latestVersion: string; downloadUrl?: string } | null;
+  onTriggerMotorUpdate?: () => Promise<void>;
+  isUpdatingMotor?: boolean;
   onNewConversation: () => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation?: (id: string) => void;
@@ -40,6 +43,9 @@ export default function ConversationSidebar({
   workspacePath,
   workspaceTree,
   motorStatus,
+  motorUpdateInfo,
+  onTriggerMotorUpdate,
+  isUpdatingMotor,
   onNewConversation,
   onSelectConversation,
   onDeleteConversation,
@@ -111,46 +117,90 @@ export default function ConversationSidebar({
       <div className="flex-1 overflow-y-auto minimal-scrollbar p-4 flex flex-col gap-6">
 
         {/* Motor Status Section */}
-        <div className="flex items-center justify-between bg-zinc-900/50 rounded-lg p-3 border border-zinc-800/50">
-          <div className="flex items-center gap-2">
-            <div className="relative flex h-3 w-3">
-              {motorStatus && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+        <div className="flex flex-col bg-zinc-900/50 rounded-lg p-3 border border-zinc-800/50 gap-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="relative flex h-3 w-3">
+                {motorStatus && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                )}
+                <span className={`relative inline-flex rounded-full h-3 w-3 ${motorStatus ? 'bg-emerald-500' : 'bg-zinc-600'}`}></span>
+              </div>
+              <span className="text-xs font-semibold text-zinc-300">
+                {motorStatus ? 'Online' : 'Offline'}
+              </span>
+              {motorStatus && motorUpdateInfo?.currentVersion && (
+                <span className="text-[10px] text-zinc-500 font-mono">v{motorUpdateInfo.currentVersion}</span>
               )}
-              <span className={`relative inline-flex rounded-full h-3 w-3 ${motorStatus ? 'bg-emerald-500' : 'bg-zinc-600'}`}></span>
             </div>
-            <span className="text-xs font-semibold text-zinc-300">
-              {motorStatus ? 'Online' : 'Offline'}
-            </span>
+
+            {/* Toggle Switch */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={motorStatus}
+              onClick={async () => {
+                if (motorStatus) {
+                  ControladorClient.shutdownMotor();
+                } else {
+                  const toastId = toast.loading('Arrancando motor...');
+                  try {
+                    await ControladorClient.startMotor();
+                    toast.success('Motor listo y ejecutándose', { id: toastId });
+                  } catch (error: any) {
+                    toast.error(error.message || 'Error validando motor', { id: toastId });
+                  }
+                }
+              }}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${motorStatus ? 'bg-emerald-500' : 'bg-zinc-700'
+                }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${motorStatus ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+              />
+            </button>
           </div>
 
-          {/* Toggle Switch */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={motorStatus}
-            onClick={async () => {
-              if (motorStatus) {
-                ControladorClient.shutdownMotor();
-              } else {
-                const toastId = toast.loading('Arrancando motor...');
-                try {
-                  await ControladorClient.startMotor();
-                  toast.success('Motor listo y ejecutándose', { id: toastId });
-                } catch (error: any) {
-                  toast.error(error.message || 'Error validando motor', { id: toastId });
-                }
-              }
-            }}
-            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${motorStatus ? 'bg-emerald-500' : 'bg-zinc-700'
-              }`}
-          >
-            <span
-              aria-hidden="true"
-              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${motorStatus ? 'translate-x-4' : 'translate-x-0'
-                }`}
-            />
-          </button>
+          {/* Notificación de actualización 1-Clic */}
+          {motorStatus && motorUpdateInfo && (
+            <div className="pt-2 border-t border-purple-500/20 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+                </span>
+                <span className="text-[11px] font-medium text-purple-300 truncate">
+                  v{motorUpdateInfo.latestVersion} disponible
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={isUpdatingMotor}
+                onClick={onTriggerMotorUpdate}
+                className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded bg-purple-600/90 hover:bg-purple-500 text-white shadow-sm hover:shadow-purple-500/20 transition-all flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                title={lang === 'es' ? 'Actualizar motor local en segundo plano' : 'Update local motor in background'}
+              >
+                {isUpdatingMotor ? (
+                  <>
+                    <svg className="animate-spin h-2.5 w-2.5 text-white" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    <span>{lang === 'es' ? 'Actualizando...' : 'Updating...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span>{lang === 'es' ? 'Actualizar' : 'Update'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Workspace / Project Section */}

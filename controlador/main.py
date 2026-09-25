@@ -4,7 +4,7 @@ import threading
 import time
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import workspace, chat, video_looper, subtitles, tts
+from routers import workspace, chat, video_looper, subtitles, tts, system
 from hardware import governor
 
 import sys
@@ -27,7 +27,7 @@ for b_dir in possible_bin_dirs:
 app = FastAPI(
     title="AutoProd Local Controlador",
     description="Motor local para procesar video y gestionar workspace en AutoProd",
-    version="1.0.0"
+    version=system.CURRENT_MOTOR_VERSION
 )
 
 # Configuración de CORS universal para permitir conexión desde el dashboard (localhost o producción)
@@ -46,6 +46,7 @@ app.include_router(chat.router)
 app.include_router(video_looper.router)
 app.include_router(subtitles.router)
 app.include_router(tts.router)
+app.include_router(system.router)
 
 @app.get("/")
 def root():

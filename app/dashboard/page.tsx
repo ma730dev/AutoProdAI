@@ -84,6 +84,12 @@ export default function Dashboard() {
   const [creationMode, setCreationMode] = useState<'channel' | 'video' | null>(null);
   const [motorStatus, setMotorStatus] = useState<boolean>(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [motorUpdateInfo, setMotorUpdateInfo] = useState<{
+    currentVersion: string;
+    latestVersion: string;
+    downloadUrl?: string;
+  } | null>(null);
+  const [isUpdatingMotor, setIsUpdatingMotor] = useState(false);
 
   // ── Data State ──
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -130,6 +136,97 @@ export default function Dashboard() {
     }
   };
 
+  const checkMotorUpdates = useCallback(async () => {
+    try {
+      const [motorVer, remoteRel] = await Promise.all([
+        ControladorClient.getMotorVersion(),
+        ControladorClient.checkRemoteReleaseVersion()
+      ]);
+
+      if (motorVer && remoteRel && remoteRel.latestVersion) {
+        const cur = motorVer.version || '1.0.0';
+        const latest = remoteRel.latestVersion;
+        
+        const pa = latest.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+        const pb = cur.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+        let isNewer = false;
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+          const na = pa[i] || 0;
+          const nb = pb[i] || 0;
+          if (na > nb) { isNewer = true; break; }
+          if (na < nb) { isNewer = false; break; }
+        }
+
+        if (isNewer) {
+          const isMac = typeof window !== 'undefined' && navigator.userAgent.toLowerCase().includes('mac');
+          const dlUrl = isMac ? remoteRel.assets?.macBinary : remoteRel.assets?.windowsBinary;
+          setMotorUpdateInfo({
+            currentVersion: cur,
+            latestVersion: latest,
+            downloadUrl: dlUrl
+          });
+          return;
+        }
+      }
+      setMotorUpdateInfo(null);
+    } catch (e) {
+      console.warn('Error al verificar actualizaciones del motor:', e);
+    }
+  }, []);
+
+  const handleTriggerMotorUpdate = async () => {
+    if (!motorUpdateInfo) return;
+    setIsUpdatingMotor(true);
+    const toastId = toast.loading(
+      lang === 'es'
+        ? `Descargando actualización del motor v${motorUpdateInfo.latestVersion}...`
+        : `Downloading motor update v${motorUpdateInfo.latestVersion}...`
+    );
+
+    try {
+      await ControladorClient.triggerMotorUpdate(motorUpdateInfo.downloadUrl, motorUpdateInfo.latestVersion);
+      toast.loading(
+        lang === 'es'
+          ? 'Reiniciando motor local con la nueva versión...'
+          : 'Restarting local motor with new version...',
+        { id: toastId }
+      );
+
+      let reconnected = false;
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        const online = await ControladorClient.checkStatus();
+        if (online) {
+          const newVer = await ControladorClient.getMotorVersion();
+          reconnected = true;
+          setMotorStatus(true);
+          setMotorUpdateInfo(null);
+          toast.success(
+            lang === 'es'
+              ? `¡Motor local actualizado con éxito a v${newVer?.version || motorUpdateInfo.latestVersion}!`
+              : `Local motor successfully updated to v${newVer?.version || motorUpdateInfo.latestVersion}!`,
+            { id: toastId }
+          );
+          if (workspacePath) loadWorkspaceTree(workspacePath);
+          break;
+        }
+      }
+
+      if (!reconnected) {
+        toast.info(
+          lang === 'es'
+            ? 'El motor se está reiniciando. Por favor verifica la ventana de consola.'
+            : 'Motor is restarting. Please check console window.',
+          { id: toastId }
+        );
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al actualizar motor', { id: toastId });
+    } finally {
+      setIsUpdatingMotor(false);
+    }
+  };
+
   const handleCreatePendingFolder = async (channel: any) => {
     const toastId = toast.loading(`Creando estructura de carpetas para "${channel.name}"...`);
     try {
@@ -155,6 +252,7 @@ export default function Dashboard() {
       const isOnline = await ControladorClient.checkStatus();
       setMotorStatus(isOnline);
       if (isOnline) {
+        checkMotorUpdates();
         // Only load tree if we haven't loaded it yet since coming online
         if (!treeLoaded) {
           let resolvedPath: string | null = null;
@@ -1035,6 +1133,9 @@ export default function Dashboard() {
                 workspacePath={workspacePath}
                 workspaceTree={workspaceTree}
                 motorStatus={motorStatus}
+                motorUpdateInfo={motorUpdateInfo}
+                onTriggerMotorUpdate={handleTriggerMotorUpdate}
+                isUpdatingMotor={isUpdatingMotor}
                 onRefreshWorkspace={() => workspacePath && loadWorkspaceTree(workspacePath)}
                 onNewConversation={handleNewConversation}
                 onSelectConversation={(id) => { setActiveConversationId(id); setIsChatOpen(true); }}

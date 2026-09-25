@@ -110,6 +110,72 @@ export class ControladorClient {
   }
 
   /**
+   * Obtiene la versión actual y metadatos del motor local
+   */
+  static async getMotorVersion(): Promise<{ version: string; is_frozen?: boolean; platform?: string } | null> {
+    try {
+      const response = await fetch(`${getControladorUrl()}/system/version`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(2500)
+      });
+      if (response.ok) {
+        return await response.json();
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Consulta a la nube si hay una versión más reciente disponible
+   */
+  static async checkRemoteReleaseVersion(): Promise<{ latestVersion: string; assets: any; tag: string } | null> {
+    try {
+      const response = await fetch('/api/setup/version');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          return {
+            latestVersion: data.version,
+            assets: data.assets,
+            tag: data.tag
+          };
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Dispara el proceso de auto-actualización del motor local
+   */
+  static async triggerMotorUpdate(downloadUrl?: string, version?: string): Promise<{ success: boolean; message?: string; status?: string }> {
+    try {
+      const response = await fetch(`${getControladorUrl()}/system/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          download_url: downloadUrl || null,
+          version: version || null
+        }),
+        signal: AbortSignal.timeout(60000)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || data.message || 'Error al ejecutar la actualización');
+      }
+      return { success: true, ...data };
+    } catch (error: any) {
+      console.error('Controlador Client: triggerMotorUpdate failed', error);
+      throw error;
+    }
+  }
+
+  /**
    * Envía un mensaje a la consola local de IA
    */
   static async askConsoleAI(prompt: string, commandTemplate: string): Promise<string> {

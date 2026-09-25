@@ -57,6 +57,7 @@ Cada funcionalidad cuenta con su **Ficha Técnica** (código, endpoints y arquit
 | **FEAT-19** | **Router Semántico Jerárquico, Dominios & Telemetría Flywheel** | Next.js / pgvector / AI SDK / Prisma | [Ficha Técnica](file:///e:/autoprod/docs/features/semantic_router_and_telemetry/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/semantic_router_and_telemetry/idea.md) |
 | **FEAT-20** | **Orquestación Creativa, Briefing de Ideación, Negociación de Créditos & Tool generar_imagen en Chat** | Next.js / AI SDK / DALL-E 3 / Prisma | [Ficha Técnica](file:///e:/autoprod/docs/features/creative_orchestration_and_image_tools/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/creative_orchestration_and_image_tools/idea.md) |
 | **FEAT-21** | **Gobernanza de Espacio de Trabajo, Rama `workspace/youtube` & Auditoría de Límites de Canales (Basic: 3, Pro: 7, Enterprise: Ilimitado)** | Next.js / FastAPI / Prisma / Supabase | [Ficha Técnica](file:///e:/autoprod/docs/features/workspace_governance_and_channel_limits/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/workspace_governance_and_channel_limits/idea.md) |
+| **FEAT-22** | **Auto-Update del Motor Local & Notificación Asistida 1-Clic en Dashboard** | FastAPI / Next.js / GitHub Releases / PyInstaller | [Ficha Técnica](file:///e:/autoprod/docs/features/motor_auto_update/ficha_tecnica.md) \| [Idea & Escalabilidad](file:///e:/autoprod/docs/features/motor_auto_update/idea.md) |
 
 ---
 
