@@ -26,7 +26,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Instalar Dependencias y PyInstaller
         run: |
@@ -99,7 +98,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Instalar Dependencias y PyInstaller
         run: |
@@ -170,7 +168,6 @@ jobs:
         run: |
           rm -rf controlador/build
           rm -rf controlador/.pyinstaller
-          rm -rf ~/Library/Caches/pip
           rm -rf ~/Library/Caches/pyinstaller
           brew cleanup --prune=all || true
 
