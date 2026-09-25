@@ -93,3 +93,6 @@ dist/
 .cursor/
 .devin/
 .gemini/
+.aider-desk/
+data/
+skills-lock.json

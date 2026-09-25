@@ -1797,11 +1797,10 @@ export default function VideoStudio({
           <button
             type="button"
             onClick={() => setActiveInspectorTab('clip')}
-            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-              activeInspectorTab === 'clip'
-                ? 'bg-purple-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
-            }`}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${activeInspectorTab === 'clip'
+              ? 'bg-purple-600 text-white shadow-sm'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
+              }`}
           >
             <span>🎬</span>
             <span className="truncate">Clip</span>
@@ -1809,11 +1808,10 @@ export default function VideoStudio({
           <button
             type="button"
             onClick={() => setActiveInspectorTab('looper')}
-            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-              activeInspectorTab === 'looper'
-                ? 'bg-amber-600 text-black shadow-sm font-extrabold'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
-            }`}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${activeInspectorTab === 'looper'
+              ? 'bg-amber-600 text-black shadow-sm font-extrabold'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
+              }`}
           >
             <span>🔁</span>
             <span className="truncate">Looper</span>
@@ -1821,11 +1819,10 @@ export default function VideoStudio({
           <button
             type="button"
             onClick={() => setActiveInspectorTab('audio')}
-            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-              activeInspectorTab === 'audio'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
-            }`}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${activeInspectorTab === 'audio'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
+              }`}
           >
             <span>🎵</span>
             <span className="truncate">Audio</span>
@@ -1833,11 +1830,10 @@ export default function VideoStudio({
           <button
             type="button"
             onClick={() => setActiveInspectorTab('overlay')}
-            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-              activeInspectorTab === 'overlay'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
-            }`}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${activeInspectorTab === 'overlay'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
+              }`}
           >
             <span>🏷️</span>
             <span className="truncate">Capas</span>
@@ -2170,11 +2166,10 @@ export default function VideoStudio({
                         return (
                           <label
                             key={clip.path}
-                            className={`flex items-center justify-between p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
-                              isChecked
-                                ? 'bg-amber-950/40 border-amber-600/50 text-amber-100'
-                                : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-300 hover:bg-zinc-900'
-                            }`}
+                            className={`flex items-center justify-between p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${isChecked
+                              ? 'bg-amber-950/40 border-amber-600/50 text-amber-100'
+                              : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-300 hover:bg-zinc-900'
+                              }`}
                           >
                             <div className="flex items-center gap-2 truncate pr-1">
                               <input
@@ -2269,11 +2264,10 @@ export default function VideoStudio({
                 <button
                   type="button"
                   onClick={() => setLooperDurationMode('time')}
-                  className={`py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                    looperDurationMode === 'time'
-                      ? 'bg-amber-600 text-black font-bold shadow'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
+                  className={`py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${looperDurationMode === 'time'
+                    ? 'bg-amber-600 text-black font-bold shadow'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
                 >
                   <span>⏱️</span>
                   <span>{lang === 'es' ? 'Poner Tiempo' : 'Set Time'}</span>
@@ -2281,11 +2275,10 @@ export default function VideoStudio({
                 <button
                   type="button"
                   onClick={() => setLooperDurationMode('songs')}
-                  className={`py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                    looperDurationMode === 'songs'
-                      ? 'bg-amber-600 text-black font-bold shadow'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
+                  className={`py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${looperDurationMode === 'songs'
+                    ? 'bg-amber-600 text-black font-bold shadow'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
                 >
                   <span>🎵</span>
                   <span>{lang === 'es' ? 'Elegir Canciones' : 'Pick Songs'}</span>
@@ -2346,11 +2339,10 @@ export default function VideoStudio({
                             setTimelineCuts(prev => prev.map(c => c.id === selectedCut.id ? { ...c, loopDuration: mins * 60 } : c));
                           }
                         }}
-                        className={`flex-1 py-1 rounded text-[10px] font-mono font-semibold border cursor-pointer transition-all ${
-                          looperCustomMinutes === mins && looperCustomSeconds === 0
-                            ? 'bg-amber-500 text-black border-amber-400 font-bold'
-                            : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
-                        }`}
+                        className={`flex-1 py-1 rounded text-[10px] font-mono font-semibold border cursor-pointer transition-all ${looperCustomMinutes === mins && looperCustomSeconds === 0
+                          ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                          : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'
+                          }`}
                       >
                         {mins}m
                       </button>
@@ -2401,11 +2393,10 @@ export default function VideoStudio({
                           return (
                             <label
                               key={song.path}
-                              className={`flex items-center justify-between p-1.5 rounded-lg border text-xs cursor-pointer ${
-                                isSongSelected
-                                  ? 'bg-amber-950/40 border-amber-600/50 text-amber-100'
-                                  : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:bg-zinc-900'
-                              }`}
+                              className={`flex items-center justify-between p-1.5 rounded-lg border text-xs cursor-pointer ${isSongSelected
+                                ? 'bg-amber-950/40 border-amber-600/50 text-amber-100'
+                                : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:bg-zinc-900'
+                                }`}
                             >
                               <div className="flex items-center gap-1.5 truncate">
                                 <input
@@ -2918,35 +2909,9 @@ export default function VideoStudio({
             className="text-xs text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700"
             title="Volver al Hub de Proyectos"
           >
-            ← {lang === 'es' ? 'Proyectos' : 'Projects'}
+            ← {lang === 'es' ? ' Proyectos' : ' Projects'}
           </button>
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🎬</span>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm font-bold text-white tracking-tight truncate max-w-[220px]" title={activeProject.title}>
-                  {activeProject.title}
-                </h1>
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 font-mono font-bold border border-purple-800/60">
-                  {currentPreset.ratio}
-                </span>
-                {isAutoSaving ? (
-                  <span className="text-[10px] text-amber-400 flex items-center gap-1 font-mono">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                    Guardando...
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    Guardado
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] text-zinc-400">
-                {activeProject.channel ? `Canal: ${activeProject.channel.name}` : (lang === 'es' ? 'Edición libre (Sin canal)' : 'Standalone project')}
-              </span>
-            </div>
-          </div>
+
         </div>
 
         {/* CONTROLES DE EXPORTACIÓN */}
@@ -3117,8 +3082,8 @@ export default function VideoStudio({
                       <div
                         key={song.path || idx}
                         className={`p-2 rounded-xl border flex flex-col gap-1.5 text-xs transition-all ${isAuditioning
-                            ? 'bg-indigo-950/60 border-indigo-500/70 ring-1 ring-indigo-500/40'
-                            : 'bg-zinc-950/80 border-zinc-800/80 hover:border-indigo-800/60'
+                          ? 'bg-indigo-950/60 border-indigo-500/70 ring-1 ring-indigo-500/40'
+                          : 'bg-zinc-950/80 border-zinc-800/80 hover:border-indigo-800/60'
                           }`}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -3128,8 +3093,8 @@ export default function VideoStudio({
                               type="button"
                               onClick={() => toggleAuditionSong(song.path)}
                               className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-all ${isAuditioning
-                                  ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/50 animate-pulse'
-                                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                                ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/50 animate-pulse'
+                                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
                                 }`}
                               title={isAuditioning ? 'Pausar audición' : 'Escuchar vista previa'}
                             >
@@ -3394,8 +3359,8 @@ export default function VideoStudio({
                           key={sub.id}
                           onClick={() => setPlayheadTime(sub.start)}
                           className={`p-2 rounded-xl border transition-all text-xs cursor-pointer flex flex-col gap-1 ${isActive
-                              ? 'bg-amber-950/40 border-amber-500/80 text-amber-200 ring-1 ring-amber-500/40'
-                              : 'bg-zinc-950/80 border-zinc-800/80 hover:border-zinc-700 text-zinc-300'
+                            ? 'bg-amber-950/40 border-amber-500/80 text-amber-200 ring-1 ring-amber-500/40'
+                            : 'bg-zinc-950/80 border-zinc-800/80 hover:border-zinc-700 text-zinc-300'
                             }`}
                         >
                           <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
@@ -3558,12 +3523,12 @@ export default function VideoStudio({
                     zIndex: isSelected ? 30 : 20,
                   }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-extrabold uppercase select-none transition-all shadow-2xl backdrop-blur-md flex items-center gap-1.5 border group cursor-grab active:cursor-grabbing ${isGhost
-                      ? 'opacity-65 border-dashed border-amber-400 bg-black/85 text-amber-300 ring-1 ring-amber-400'
-                      : ov.type === 'subscribe_cta'
-                        ? 'bg-red-600/95 text-white border-white/80'
-                        : ov.type === 'like_cta'
-                          ? 'bg-blue-600/95 text-white border-white/80'
-                          : 'bg-zinc-900/95 text-purple-200 border-purple-500/80'
+                    ? 'opacity-65 border-dashed border-amber-400 bg-black/85 text-amber-300 ring-1 ring-amber-400'
+                    : ov.type === 'subscribe_cta'
+                      ? 'bg-red-600/95 text-white border-white/80'
+                      : ov.type === 'like_cta'
+                        ? 'bg-blue-600/95 text-white border-white/80'
+                        : 'bg-zinc-900/95 text-purple-200 border-purple-500/80'
                     } ${isSelected ? 'ring-2 ring-purple-400 ring-offset-2 ring-offset-black scale-105' : 'hover:ring-1 hover:ring-white/50'}`}
                   title={`Arrastra para mover en el video (X: ${ov.xPercent}%, Y: ${ov.yPercent}%) • Activo: ${ov.startTime.toFixed(1)}s a ${(ov.startTime + ov.duration).toFixed(1)}s`}
                 >
@@ -3917,22 +3882,20 @@ export default function VideoStudio({
                     <button
                       type="button"
                       onClick={() => setExportDestinationMode('existing')}
-                      className={`px-2 py-0.5 rounded font-medium transition-colors cursor-pointer ${
-                        exportDestinationMode === 'existing'
-                          ? 'bg-purple-600 text-white'
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
+                      className={`px-2 py-0.5 rounded font-medium transition-colors cursor-pointer ${exportDestinationMode === 'existing'
+                        ? 'bg-purple-600 text-white'
+                        : 'text-zinc-400 hover:text-white'
+                        }`}
                     >
                       {lang === 'es' ? 'Existente' : 'Existing'}
                     </button>
                     <button
                       type="button"
                       onClick={() => setExportDestinationMode('new')}
-                      className={`px-2 py-0.5 rounded font-medium transition-colors cursor-pointer ${
-                        exportDestinationMode === 'new'
-                          ? 'bg-purple-600 text-white'
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
+                      className={`px-2 py-0.5 rounded font-medium transition-colors cursor-pointer ${exportDestinationMode === 'new'
+                        ? 'bg-purple-600 text-white'
+                        : 'text-zinc-400 hover:text-white'
+                        }`}
                     >
                       {lang === 'es' ? '+ Nueva Carpeta' : '+ New Folder'}
                     </button>
@@ -4040,11 +4003,10 @@ export default function VideoStudio({
                   <button
                     type="button"
                     onClick={() => setExportEngine('local')}
-                    className={`p-2 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
-                      exportEngine === 'local'
-                        ? 'bg-purple-950/40 border-purple-500 text-white shadow-sm'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
-                    }`}
+                    className={`p-2 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${exportEngine === 'local'
+                      ? 'bg-purple-950/40 border-purple-500 text-white shadow-sm'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
                   >
                     <span className="text-base">⚡</span>
                     <div>
@@ -4055,11 +4017,10 @@ export default function VideoStudio({
                   <button
                     type="button"
                     onClick={() => setExportEngine('cloud')}
-                    className={`p-2 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
-                      exportEngine === 'cloud'
-                        ? 'bg-purple-950/40 border-purple-500 text-white shadow-sm'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
-                    }`}
+                    className={`p-2 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${exportEngine === 'cloud'
+                      ? 'bg-purple-950/40 border-purple-500 text-white shadow-sm'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
                   >
                     <span className="text-base">☁️</span>
                     <div>
