@@ -3,6 +3,7 @@ import sys
 import shutil
 import subprocess
 import base64
+import mimetypes
 from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, Query
@@ -522,7 +523,11 @@ def get_raw_file(path: str):
     return FileResponse(
         path=str(file_path),
         media_type=mime_type,
-        content_disposition_type="inline"
+        content_disposition_type="inline",
+        headers={
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600"
+        }
     )
 
 
@@ -543,7 +548,7 @@ def read_file(path: str):
         raise HTTPException(status_code=400, detail="Solo se permite leer archivos .md o .txt por seguridad.")
         
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             return {"content": f.read()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error leyendo el archivo: {str(e)}")
