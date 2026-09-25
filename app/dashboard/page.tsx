@@ -613,6 +613,23 @@ export default function Dashboard() {
     setDeleteTargetId(null);
   };
 
+  const handleDeleteAllConversations = async () => {
+    try {
+      const res = await fetch('/api/conversations', { method: 'DELETE' });
+      if (res.ok) {
+        setConversations([]);
+        setActiveConversationId(null);
+        await createInitialConversation();
+        toast.success(lang === 'es' ? 'Todas las conversaciones han sido eliminadas' : 'All conversations deleted');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || (lang === 'es' ? 'Error al eliminar conversaciones' : 'Error deleting conversations'));
+      }
+    } catch {
+      toast.error(lang === 'es' ? 'Error al eliminar conversaciones' : 'Error deleting conversations');
+    }
+  };
+
   const handleRenameConversation = async (id: string, newTitle: string) => {
     if (!newTitle.trim()) return;
     try {
@@ -1358,6 +1375,7 @@ export default function Dashboard() {
                   onSelectConversation={(id) => setActiveConversationId(id)}
                   onNewConversation={handleNewConversation}
                   onDeleteConversation={(id) => setDeleteTargetId(id)}
+                  onDeleteAllConversations={handleDeleteAllConversations}
                   onRenameConversation={handleRenameConversation}
                   onToggleCollapse={() => setIsChatOpen(false)}
                 />

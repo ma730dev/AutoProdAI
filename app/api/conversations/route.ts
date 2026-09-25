@@ -79,3 +79,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: err.message || 'Error interno del servidor' }, { status: 500 });
   }
 }
+
+export async function DELETE() {
+  try {
+    const auth = await getAuthUser();
+    if (!auth.ok) return auth.response;
+    const { user } = auth;
+
+    await ensureDbUser(user.id, user.email);
+
+    const userConvs = await db.conversation.findMany({
+      where: { userId: user.id },
+      select: { id: true }
+    });
+    const convIds = userConvs.map(c => c.id);
+
+    if (convIds.length > 0) {
+      await db.message.deleteMany({
+        where: { conversationId: { in: convIds } }
+      });
+      await db.conversation.deleteMany({
+        where: { id: { in: convIds } }
+      });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error('Error deleting all conversations:', err);
+    return NextResponse.json({ error: err.message || 'Error interno del servidor' }, { status: 500 });
+  }
+}
+

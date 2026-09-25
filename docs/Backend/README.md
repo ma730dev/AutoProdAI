@@ -62,6 +62,7 @@ Todas las acciones ejecutables del sistema se implementan como herramientas nati
 |---|---|---|
 | `/api/conversations` | GET | Lista conversaciones del usuario |
 | `/api/conversations` | POST | Crea conversación con systemPrompt + mensaje de bienvenida dinámico |
+| `/api/conversations` | DELETE | Elimina todas las conversaciones y mensajes del usuario |
 | `/api/conversations/[id]/messages` | GET/POST | CRUD de mensajes de una conversación |
 | `/api/channels` | GET | Lista canales del usuario con sus videos |
 

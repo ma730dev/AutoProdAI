@@ -6,6 +6,7 @@ import { Channel, Conversation, Message } from '@/components/dashboard/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import InteractiveQuestionCard from './InteractiveQuestionCard';
+import ConfirmDeleteModal from '@/components/modals/ConfirmDeleteModal';
 
 interface Checklist {
   cta: boolean;
@@ -37,6 +38,7 @@ interface Props {
   onSelectConversation?: (id: string) => void;
   onNewConversation?: () => void;
   onDeleteConversation?: (id: string) => void;
+  onDeleteAllConversations?: () => Promise<void> | void;
   onRenameConversation?: (id: string, newTitle: string) => void;
   onToggleCollapse?: () => void;
 }
@@ -64,6 +66,7 @@ export default function ChatPanel({
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
+  onDeleteAllConversations,
   onRenameConversation,
   onToggleCollapse,
 }: Props) {
@@ -81,6 +84,7 @@ export default function ChatPanel({
   const [searchConv, setSearchConv] = useState('');
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editConvTitle, setEditConvTitle] = useState('');
+  const [isConfirmDeleteAllOpen, setIsConfirmDeleteAllOpen] = useState(false);
 
   const PROMPT_TEMPLATES: Record<string, string> = {
     import_channel: `[Extracción y Análisis de Canal de YouTube]
@@ -234,7 +238,18 @@ export default function ChatPanel({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
+            {conversations.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsConfirmDeleteAllOpen(true)}
+                className="text-xs font-semibold text-red-500 hover:text-red-400 hover:bg-red-500/10 px-2 py-1 rounded-md transition-colors cursor-pointer"
+                title={lang === 'es' ? 'Eliminar todos los chats' : 'Delete all chats'}
+              >
+                {lang === 'es' ? 'Eliminar todos' : 'Delete all'}
+              </button>
+            )}
+
             {onNewConversation && (
               <button
                 type="button"
@@ -438,6 +453,22 @@ export default function ChatPanel({
             </div>
           )}
         </div>
+
+        {/* Modal de confirmación para eliminar todos los chats */}
+        <ConfirmDeleteModal
+          isOpen={isConfirmDeleteAllOpen}
+          onClose={() => setIsConfirmDeleteAllOpen(false)}
+          onConfirm={async () => {
+            if (onDeleteAllConversations) {
+              await onDeleteAllConversations();
+            }
+            setIsConfirmDeleteAllOpen(false);
+          }}
+          title={lang === 'es' ? '¿Eliminar todos los chats?' : 'Delete all chats?'}
+          description={lang === 'es'
+            ? 'Esta acción no se puede deshacer. Se borrarán permanentemente todas las conversaciones y sus mensajes asociados.'
+            : 'This action cannot be undone. All conversations and associated messages will be permanently deleted.'}
+        />
       </div>
     );
   }
