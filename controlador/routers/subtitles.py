@@ -105,10 +105,11 @@ def segments_to_vtt(segments: List[Dict[str, Any]]) -> str:
         lines.append(f"{start} --> {end}\n{text}\n")
     return "\n".join(lines)
 
-def call_openai_whisper(audio_path: Path, api_key: str, language: Optional[str] = None) -> Dict[str, Any]:
+def call_openai_whisper(audio_path: Path, api_key: str, language: Optional[str] = None, is_song: bool = True) -> Dict[str, Any]:
     """
     Llama a la API de Whisper de OpenAI usando la librería estándar urllib
     (sin dependencias externas, cero consumo de CPU/GPU local).
+    Incluye timestamps a nivel de palabra y prompt lírico para máxima fidelidad en canciones.
     """
     boundary = f"----AutoProdWhisperBoundary{uuid.uuid4().hex}"
     body = bytearray()
@@ -120,6 +121,11 @@ def call_openai_whisper(audio_path: Path, api_key: str, language: Optional[str] 
 
     add_field("model", "whisper-1")
     add_field("response_format", "verbose_json")
+    add_field("timestamp_granularities[]", "word")
+    add_field("timestamp_granularities[]", "segment")
+    add_field("temperature", "0.0")
+    if is_song:
+        add_field("prompt", "Letra de canción en español con rimas, versos, estrofas y puntuación limpia.")
     if language and language.lower() not in ["auto", ""]:
         add_field("language", language.lower())
 
@@ -148,20 +154,26 @@ def call_openai_whisper(audio_path: Path, api_key: str, language: Optional[str] 
         resp_data = response.read().decode("utf-8")
         return json.loads(resp_data)
 
-def extract_optimized_audio(source_file: Path, temp_dir: Path, target_id: str, is_cloud_api: bool = False) -> Path:
+def extract_optimized_audio(source_file: Path, temp_dir: Path, target_id: str, is_cloud_api: bool = False, is_song: bool = True) -> Path:
     """
-    Extrae el audio de video o normaliza a 16kHz mono WAV aplicando filtrado vocal:
-    - highpass=f=120: elimina ruidos de bombo/sub-bajos que confunden la matriz acústica.
-    - lowpass=f=7500: reduce platillos estridentes y siseos de sintetizadores.
-    - dynaudnorm: normaliza la voz para que partes suaves y coros tengan volumen parejo.
+    Extrae y optimiza el audio con ecualización vocal acústica:
+    - Para canciones: extrae y suma los canales L y R (atenuando desfases e instrumentos laterales)
+      y filtra frecuencias extremas sin usar dynaudnorm (que amplificaba instrumentos en pausas).
+    - Para voz común: aplica filtrado de banda vocal estándar.
     """
     ffmpeg = get_ffmpeg_path()
     if is_cloud_api:
         out_audio = temp_dir / f"audio_opt_{target_id}_{int(time.time())}.mp3"
-        codec_args = ["-acodec", "libmp3lame", "-b:a", "96k"]
+        codec_args = ["-acodec", "libmp3lame", "-b:a", "128k"]
     else:
         out_audio = temp_dir / f"audio_opt_{target_id}_{int(time.time())}.wav"
         codec_args = ["-acodec", "pcm_s16le"]
+
+    if is_song:
+        # Aislamiento vocal: atenuar laterales estéreo, cancelar ruidos sub-graves y agudos extremos
+        audio_filters = "pan=mono|c0=0.5*c0+0.5*c1,highpass=f=90,lowpass=f=8000,volume=1.2"
+    else:
+        audio_filters = "highpass=f=100,lowpass=f=7500"
 
     cmd = [
         str(ffmpeg),
@@ -169,7 +181,7 @@ def extract_optimized_audio(source_file: Path, temp_dir: Path, target_id: str, i
         "-y",
         "-i", str(source_file),
         "-vn",
-        "-af", "highpass=f=120,lowpass=f=7500,dynaudnorm=f=150:g=15",
+        "-af", audio_filters,
         *codec_args,
         "-ar", "16000",
         "-ac", "1",
@@ -190,18 +202,33 @@ def extract_optimized_audio(source_file: Path, temp_dir: Path, target_id: str, i
 # ──────────────────────────────────────────────
 _LOADED_WHISPER_MODELS: Dict[str, Any] = {}
 
-def get_or_create_faster_whisper_model(model_size: str = "small", device: str = "cpu", compute_type: str = "int8", cpu_threads: int = 2):
-    """Carga y cachea en memoria el modelo de Faster-Whisper."""
-    key = f"{model_size}_{device}_{compute_type}_{cpu_threads}"
-    if key not in _LOADED_WHISPER_MODELS:
-        from faster_whisper import WhisperModel
-        _LOADED_WHISPER_MODELS[key] = WhisperModel(
-            model_size,
-            device=device,
-            compute_type=compute_type,
-            cpu_threads=cpu_threads
-        )
-    return _LOADED_WHISPER_MODELS[key]
+def get_or_create_faster_whisper_model(model_size: str = "large-v3-turbo", device: str = "cpu", compute_type: str = "int8", cpu_threads: int = 2):
+    """Carga y cachea en memoria el modelo de Faster-Whisper con fallback ordenado."""
+    models_to_try = [model_size]
+    if model_size == "large-v3-turbo":
+        models_to_try.extend(["medium", "small"])
+    elif model_size == "medium":
+        models_to_try.append("small")
+
+    last_err = None
+    for m in models_to_try:
+        key = f"{m}_{device}_{compute_type}_{cpu_threads}"
+        if key in _LOADED_WHISPER_MODELS:
+            return _LOADED_WHISPER_MODELS[key]
+        try:
+            from faster_whisper import WhisperModel
+            model = WhisperModel(
+                m,
+                device=device,
+                compute_type=compute_type,
+                cpu_threads=cpu_threads
+            )
+            _LOADED_WHISPER_MODELS[key] = model
+            return model
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err or Exception(f"No se pudo inicializar el modelo de Whisper: {models_to_try}")
 
 def release_whisper_model():
     """Libera la memoria RAM ocupada por el modelo de Whisper al finalizar la tarea."""
@@ -213,16 +240,76 @@ def release_whisper_model():
     except Exception:
         pass
 
+def format_capcut_rhythmic_segments(
+    raw_segments: List[Dict[str, Any]],
+    max_words: int = 4,
+    max_pause_sec: float = 0.40
+) -> List[Dict[str, Any]]:
+    """
+    Agrupa palabras con timestamps en bloques rítmicos cortos de 3 a 5 palabras estilo CapCut / TikTok.
+    Si la pausa entre dos palabras es mayor a 0.40s (fin de frase o compás lírico), cierra el bloque
+    para mantener el ritmo exacto de la música.
+    """
+    all_words = []
+    for s in raw_segments:
+        if s.get("words"):
+            for w in s["words"]:
+                w_text = w.get("word", "")
+                if w_text:
+                    all_words.append({
+                        "word": w_text,
+                        "start": float(w.get("start", 0.0)),
+                        "end": float(w.get("end", 0.0)),
+                        "probability": float(w.get("probability", 1.0))
+                    })
+
+    if not all_words:
+        return raw_segments
+
+    formatted = []
+    curr_words = []
+    seg_id = 1
+
+    for i, w in enumerate(all_words):
+        curr_words.append(w)
+        is_last = (i == len(all_words) - 1)
+        
+        has_pause = False
+        if not is_last:
+            next_start = float(all_words[i + 1]["start"])
+            if (next_start - w["end"]) > max_pause_sec:
+                has_pause = True
+
+        has_punct = any(w["word"].rstrip().endswith(p) for p in [".", ",", "!", "?", ";"]) and len(curr_words) >= 3
+        is_max_reached = len(curr_words) >= max_words
+
+        if is_last or has_pause or has_punct or is_max_reached:
+            text = "".join(cw["word"] for cw in curr_words).strip()
+            if text:
+                formatted.append({
+                    "id": seg_id,
+                    "start": round(curr_words[0]["start"], 3),
+                    "end": round(curr_words[-1]["end"], 3),
+                    "text": text,
+                    "words": list(curr_words)
+                })
+                seg_id += 1
+            curr_words = []
+
+    return formatted if formatted else raw_segments
+
 def transcribe_faster_whisper(
     audio_path: Path,
     language: Optional[str] = "es",
     device: str = "cpu",
     safe_threads: int = 2,
-    model_size: str = "small"
+    model_size: str = "large-v3-turbo",
+    is_song: bool = True
 ) -> Dict[str, Any]:
     """
     Transcribe audio usando faster-whisper (CTranslate2) 100% en local.
-    Extrae marcas de tiempo a nivel de palabra para subtítulos estilo CapCut y usa Silero VAD calibrado.
+    Extrae marcas de tiempo a nivel de palabra para subtítulos estilo CapCut.
+    Para canciones: desactiva VAD agresivo y ajusta no_speech_threshold a 0.6 para no perder palabras cantadas.
     """
     compute_type = "float16" if device == "cuda" else "int8"
     try:
@@ -236,33 +323,41 @@ def transcribe_faster_whisper(
 
     lang_param = language.lower() if (language and language.lower() not in ["auto", ""]) else None
 
-    # Parámetros de VAD tolerantes para no recortar voces cantadas sobre bases musicales
-    vad_params = dict(
-        threshold=0.25,              # Umbral sensible para voz sobre instrumentos
-        min_silence_duration_ms=800, # Silencios más largos para no cortar compases líricos
-        speech_pad_ms=500            # Colchón de 500ms para preservar sílabas iniciales y finales
-    )
-
-    initial_prompt = (
-        "Letra de canción en español con rimas, estrofas y versos bien estructurados y puntuados."
-        if lang_param == "es"
-        else "Song lyrics with clear verses and punctuation."
-    )
+    # Parámetros para canciones vs habla común
+    if is_song:
+        # En canciones apagamos vad_filter porque Silero VAD confunde notas cantadas/melodías con música y corta versos
+        use_vad = False
+        vad_params = None
+        no_speech_thresh = 0.60
+        initial_prompt = (
+            "Letra de canción en español con rimas, métrica lírica, estrofas y versos bien estructurados y puntuados."
+            if lang_param == "es"
+            else "Song lyrics with clear verses, rhyming lines, and correct punctuation."
+        )
+    else:
+        use_vad = True
+        vad_params = dict(
+            threshold=0.3,
+            min_silence_duration_ms=600,
+            speech_pad_ms=400
+        )
+        no_speech_thresh = 0.50
+        initial_prompt = None
 
     segments_generator, info = model.transcribe(
         str(audio_path),
         language=lang_param,
         word_timestamps=True,
-        vad_filter=True,
+        vad_filter=use_vad,
         vad_parameters=vad_params,
-        condition_on_previous_text=False,
+        condition_on_previous_text=True,
         initial_prompt=initial_prompt,
-        no_speech_threshold=0.35,
-        beam_size=3  # Equilibrio óptimo entre precisión y velocidad sin sobrecargar CPU
+        no_speech_threshold=no_speech_thresh,
+        beam_size=5  # Calidad máxima determinista
     )
 
     full_text_parts = []
-    segments_list = []
+    raw_segments = []
 
     for seg in segments_generator:
         seg_text = seg.text.strip()
@@ -276,7 +371,7 @@ def transcribe_faster_whisper(
                     "end": round(w.end, 3),
                     "probability": round(w.probability, 3)
                 })
-        segments_list.append({
+        raw_segments.append({
             "id": seg.id,
             "start": round(seg.start, 3),
             "end": round(seg.end, 3),
@@ -284,9 +379,15 @@ def transcribe_faster_whisper(
             "words": words_list
         })
 
+    # Si es canción o hay timestamps de palabras, empaquetar en bloques rítmicos estilo CapCut (3 a 5 palabras)
+    if is_song or any(s.get("words") for s in raw_segments):
+        formatted_segments = format_capcut_rhythmic_segments(raw_segments, max_words=4, max_pause_sec=0.40)
+    else:
+        formatted_segments = raw_segments
+
     return {
         "text": " ".join(full_text_parts),
-        "segments": segments_list,
+        "segments": formatted_segments,
         "language": getattr(info, "language", language or "es"),
         "duration": getattr(info, "duration", 0.0)
     }
@@ -366,9 +467,11 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
             base_progress = int((idx / total_files) * 85) + 5
             SUB_JOBS[job_id]["progress"] = base_progress
 
-            # 1. Extraer / optimizar audio
+            is_song_file = is_folder or file_item.suffix.lower() in {".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg", ".wma"}
+
+            # 1. Extraer / optimizar audio con separación acústica vocal
             SUB_JOBS[job_id]["message"] = f"Optimizando audio para {file_item.name}..."
-            opt_audio = extract_optimized_audio(file_item, temp_dir, f"{job_id}_{idx}", is_cloud_api=(req.engine == "openai_api"))
+            opt_audio = extract_optimized_audio(file_item, temp_dir, f"{job_id}_{idx}", is_cloud_api=(req.engine == "openai_api"), is_song=is_song_file)
 
             # 2. Transcribir según el motor
             transcription_data = None
@@ -376,10 +479,13 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
                 if not api_key:
                     raise Exception("No se encontró la OPENAI_API_KEY en las variables de entorno o archivo .env.")
                 SUB_JOBS[job_id]["message"] = f"Transcribiendo con OpenAI Whisper API (Cloud): {file_item.name}..."
-                transcription_data = call_openai_whisper(opt_audio, api_key, req.language)
+                raw_data = call_openai_whisper(opt_audio, api_key, req.language, is_song=is_song_file)
+                if raw_data.get("words"):
+                    raw_data["segments"] = format_capcut_rhythmic_segments([{"words": raw_data["words"]}])
+                transcription_data = raw_data
             else:
                 # Motor local con perfil adaptativo inteligente según RAM y CPU del cliente
-                opt_config = governor.get_optimal_whisper_config()
+                opt_config = governor.get_optimal_whisper_config(for_music=is_song_file)
                 device = "cuda" if (req.engine == "local_gpu" and opt_config["device"] == "cuda") else "cpu"
                 safe_threads = opt_config["threads"]
                 chosen_model = opt_config["model_size"]
@@ -392,7 +498,8 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
                         language=req.language,
                         device=device,
                         safe_threads=safe_threads,
-                        model_size=chosen_model
+                        model_size=chosen_model,
+                        is_song=is_song_file
                     )
                 except ImportError:
                     # Si faster-whisper no está instalado, intentar CLI de whisper clásico

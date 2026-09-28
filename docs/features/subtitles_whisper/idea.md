@@ -19,9 +19,11 @@
 | **Doble Motor Whisper (Cloud API + Local)** | `✅ HECHO` | Elección entre velocidad en la nube o privacidad/costo cero local. |
 | **Procesamiento de Video Individual** | `✅ HECHO` | Extracción de audio en 16kHz mono y generación de subtítulos. |
 | **Modo Carpeta de Canciones** | `✅ HECHO` | Transcripción en lote de colecciones enteras de pistas musicales. |
-| **Hardware Governor & Aislamiento de CPU** | `✅ HECHO` | Conserva 2 núcleos libres para el sistema y previene congelamientos. |
+| **Transcripción Especializada para Canciones & Música** | `✅ HECHO` | Aislamiento acústico estéreo en centro vocal, desactivación de VAD en notas sostenidas y modelo Large-v3-Turbo local. |
+| **Subtítulos Rítmicos Dinámicos Estilo CapCut** | `✅ HECHO` | Agrupación automática de 3 a 5 palabras y cortes líricos en pausas >0.40s. |
+| **Hardware Governor & Aislamiento de CPU** | `✅ HECHO` | Conserva núcleos libres para el sistema y previene congelamientos. |
 | **Modal de Estimación Previa** | `✅ HECHO` | Prevé tiempos y advertencias de energía antes de lanzar el trabajo. |
-| **Exportación Nativa para CapCut (`.srt`/`.vtt`)** | `✅ HECHO` | Importación directa a la línea de tiempo de CapCut PC y móvil. |
+| **Exportación Nativa para CapCut (`.srt`/`.vtt`/`.json`)** | `✅ HECHO` | Importación directa a la línea de tiempo de CapCut PC y móvil con sincronización lírica exacta. |
 | **Editor de Timeline Visual con Forma de Onda** | `⏳ FALTANTE` | Barra interactiva de audio para ajustar visualmente los bloques de texto. |
 | **Estilos Cinemáticos Quemados (Hardsubs)** | `⏳ FALTANTE` | Renderizado con estilos de subtítulos animados tipo "Hormozi / MrBeast" integrados. |
 | **Traducción Automática Multi-Idioma** | `⏳ FALTANTE` | Generación de pistas de subtítulos en inglés, español y portugués en un solo clic. |
@@ -30,9 +32,10 @@
 
 ## 🚀 3. Banco de Ideas de Escalabilidad para este Módulo
 
-1. **Detección Automática de Letras de Canciones vs. Diálogos:**
-   - Pre-clasificador de audio que ajuste los hiperparámetros de Whisper para no perder palabras cuando hay música de fondo pesada.
-2. **Generador de Shorts con "Palabra por Palabra" Destacada:**
-   - Resaltar en color brillante (amarillo/verde) la palabra exacta que el narrador está pronunciando en tiempo real.
-3. **Corrector Ortográfico Asistido por IA:**
+1. **Generador de Shorts con "Palabra por Palabra" Destacada (Karaoke Highlighting):**
+   - Resaltar en color brillante (amarillo/verde) la palabra exacta que el narrador o cantante está pronunciando en tiempo real en el preview de video.
+2. **Corrector Ortográfico Asistido por IA:**
    - Pase final con LLM liviano para corregir nombres propios, jerga del nicho o términos técnicos que Whisper haya malinterpretado fonéticamente.
+3. **Separación de Pistas Vía Demucs Local (Opcional para Audio Extremo):**
+   - Pipeline alternativo para canciones con mezclas muy complejas, aislando la pista acapella antes de pasarla a Whisper.
+

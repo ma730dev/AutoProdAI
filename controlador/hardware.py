@@ -271,11 +271,12 @@ class HardwareGovernor:
                 })
                 return False
 
-    def get_optimal_whisper_config(self) -> Dict[str, Any]:
+    def get_optimal_whisper_config(self, for_music: bool = False) -> Dict[str, Any]:
         """
         Determina de forma adaptativa el modelo, cantidad de hilos y tipo de cómputo
-        según el hardware exacto del cliente (especialmente para laptops de 4GB RAM y 2-4 núcleos),
-        garantizando que la máquina no se bloquee ni congele mientras procesa.
+        según el hardware del cliente.
+        Prioriza el modelo 'large-v3-turbo' (OpenAI weights) con INT8/FP16 para máxima
+        fidelidad de transcripción en canciones y voz sin saturar la máquina.
         """
         specs = self.get_hardware_specs()
         avail_ram = specs.get("avail_ram_gb", 4.0)
@@ -287,36 +288,33 @@ class HardwareGovernor:
         if has_cuda:
             return {
                 "device": "cuda",
-                "model_size": "small",
+                "model_size": "large-v3-turbo",
                 "compute_type": "float16",
                 "threads": 2,
                 "profile": "gpu_accelerated",
-                "description": "GPU NVIDIA CUDA activa: alta velocidad y consumo casi nulo de CPU."
+                "description": "GPU NVIDIA CUDA: modelo Large-v3 Turbo (máxima fidelidad, precisión estilo CapCut)."
             }
 
         # 2. Perfil PC Modesto / Laptop de 4 GB RAM (o menos de 1.8 GB libres en RAM)
-        # Modo 'Defensa Crítica': Carga 'base' con INT8 (solo ~450 MB de RAM y 1 hilo)
-        # Esto previene absolutamente que Windows recurra al swap de disco (paging) y congele el PC.
         if total_ram <= 4.5 or avail_ram < 1.8:
             return {
                 "device": "cpu",
-                "model_size": "base",
+                "model_size": "medium" if for_music else "small",
                 "compute_type": "int8",
                 "threads": 1,
                 "profile": "low_resource_safe",
-                "description": "Perfil defensivo de 4GB RAM: 1 hilo en CPU y huella de RAM ultrabaja (~450MB)."
+                "description": "CPU (Bajo consumo): modelo Medium INT8 optimizado."
             }
 
-        # 3. PC Estándar (8 GB a 16 GB RAM con CPU estándar)
-        # Modo 'Equilibrado': Carga 'small' con INT8 (~1.1 GB RAM, 2 a 3 hilos)
+        # 3. PC Estándar (8 GB a 16+ GB RAM con CPU multinúcleo)
         threads = 2 if cpu_cores <= 4 else (3 if cpu_cores <= 8 else 4)
         return {
             "device": "cpu",
-            "model_size": "small",
+            "model_size": "large-v3-turbo",
             "compute_type": "int8",
             "threads": threads,
-            "profile": "balanced_quality",
-            "description": f"Perfil equilibrado: modelo small con {threads} hilos (~1.1GB RAM)."
+            "profile": "studio_quality",
+            "description": f"CPU con modelo Large-v3 Turbo en INT8 ({threads} hilos, máxima precisión lírica)."
         }
 
     def release_job_slot(self, job_id: str) -> Optional[Dict[str, Any]]:
