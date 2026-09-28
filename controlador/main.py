@@ -47,6 +47,36 @@ async def add_private_network_access_header(request, call_next):
     return response
 
 
+def print_startup_banner():
+    current_ver = system.get_current_motor_version()
+    banner = f"""
+==============================================================================
+     ___         __          ____                 __   ___     ____
+    /   | __  __/ /_____    / __ \_________  ____/ /  /   |   /  _/
+   / /| |/ / / / __/ __ \  / /_/ / ___/ __ \/ __  /  / /| |   / /  
+  / ___ / /_/ / /_/ /_/ / / ____/ /  / /_/ / /_/ /  / ___ |_ / /   
+ /_/  |_\__,_/\__/\____/ /_/   /_/   \____/\__,_/  /_/  |_(_)___/  
+==============================================================================
+ Hola, creador! Bienvenido a AutoProd AI
+ Sistema Operativo para Canales de Contenido (v{current_ver})
+ "La automatizacion no reemplaza al creador. Le devuelve tiempo para crear."
+ 
+ Estado: En linea y escuchando en http://127.0.0.1:8000
+==============================================================================
+"""
+    try:
+        print(banner, flush=True)
+    except Exception:
+        try:
+            sys.stdout.buffer.write(banner.encode("utf-8", errors="replace"))
+            sys.stdout.buffer.flush()
+        except Exception:
+            pass
+
+@app.on_event("startup")
+async def on_startup():
+    print_startup_banner()
+
 # Registrar Routers
 app.include_router(workspace.router)
 app.include_router(chat.router)

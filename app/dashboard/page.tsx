@@ -83,6 +83,7 @@ export default function Dashboard() {
   const [modalParentPath, setModalParentPath] = useState<string | null>(null);
   const [creationMode, setCreationMode] = useState<'channel' | 'video' | null>(null);
   const [motorStatus, setMotorStatus] = useState<boolean>(false);
+  const [motorVersion, setMotorVersion] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [motorUpdateInfo, setMotorUpdateInfo] = useState<{
     currentVersion: string;
@@ -142,6 +143,10 @@ export default function Dashboard() {
         ControladorClient.getMotorVersion(),
         ControladorClient.checkRemoteReleaseVersion()
       ]);
+
+      if (motorVer?.version) {
+        setMotorVersion(motorVer.version.replace(/^v/, ''));
+      }
 
       if (motorVer && remoteRel && remoteRel.latestVersion) {
         const cur = motorVer.version || '1.0.0';
@@ -290,6 +295,8 @@ export default function Dashboard() {
           }
         }
       } else {
+        setMotorVersion(null);
+        setMotorUpdateInfo(null);
         treeLoaded = false;
       }
     };
@@ -1150,6 +1157,7 @@ export default function Dashboard() {
                 workspacePath={workspacePath}
                 workspaceTree={workspaceTree}
                 motorStatus={motorStatus}
+                motorVersion={motorVersion}
                 motorUpdateInfo={motorUpdateInfo}
                 onTriggerMotorUpdate={handleTriggerMotorUpdate}
                 isUpdatingMotor={isUpdatingMotor}

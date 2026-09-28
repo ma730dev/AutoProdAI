@@ -15,6 +15,7 @@ interface Props {
   workspacePath: string | null;
   workspaceTree: FileNode[];
   motorStatus: boolean;
+  motorVersion?: string | null;
   motorUpdateInfo?: { currentVersion: string; latestVersion: string; downloadUrl?: string } | null;
   onTriggerMotorUpdate?: () => Promise<void>;
   isUpdatingMotor?: boolean;
@@ -43,6 +44,7 @@ export default function ConversationSidebar({
   workspacePath,
   workspaceTree,
   motorStatus,
+  motorVersion,
   motorUpdateInfo,
   onTriggerMotorUpdate,
   isUpdatingMotor,
@@ -129,8 +131,8 @@ export default function ConversationSidebar({
               <span className="text-xs font-semibold text-zinc-300">
                 {motorStatus ? 'Online' : 'Offline'}
               </span>
-              {motorStatus && motorUpdateInfo?.currentVersion && (
-                <span className="text-[10px] text-zinc-500 font-mono">v{motorUpdateInfo.currentVersion}</span>
+              {motorStatus && (motorVersion || motorUpdateInfo?.currentVersion) && (
+                <span className="text-[10px] text-zinc-500 font-mono">v{motorVersion || motorUpdateInfo?.currentVersion}</span>
               )}
             </div>
 
