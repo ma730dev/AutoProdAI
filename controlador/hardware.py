@@ -295,26 +295,17 @@ class HardwareGovernor:
                 "description": "GPU NVIDIA CUDA: modelo Large-v3 Turbo (máxima fidelidad, precisión estilo CapCut)."
             }
 
-        # 2. Perfil PC Modesto / Laptop de 4 GB RAM (o menos de 1.8 GB libres en RAM)
-        if total_ram <= 4.5 or avail_ram < 1.8:
-            return {
-                "device": "cpu",
-                "model_size": "medium" if for_music else "small",
-                "compute_type": "int8",
-                "threads": 1,
-                "profile": "low_resource_safe",
-                "description": "CPU (Bajo consumo): modelo Medium INT8 optimizado."
-            }
-
-        # 3. PC Estándar (8 GB a 16+ GB RAM con CPU multinúcleo)
-        threads = 2 if cpu_cores <= 4 else (3 if cpu_cores <= 8 else 4)
+        # Siempre Large-v3-Turbo: máxima precisión sin importar el hardware.
+        # En PCs lentos tardará más, pero nunca se sacrifica calidad de transcripción.
+        threads = 1 if cpu_cores <= 2 else (2 if cpu_cores <= 4 else (3 if cpu_cores <= 8 else 4))
+        profile = "low_resource_quality" if (total_ram <= 4.5 or avail_ram < 1.8) else "studio_quality"
         return {
             "device": "cpu",
             "model_size": "large-v3-turbo",
             "compute_type": "int8",
             "threads": threads,
-            "profile": "studio_quality",
-            "description": f"CPU con modelo Large-v3 Turbo en INT8 ({threads} hilos, máxima precisión lírica)."
+            "profile": profile,
+            "description": f"CPU con modelo Large-v3 Turbo INT8 ({threads} hilos — máxima precisión)."
         }
 
     def release_job_slot(self, job_id: str) -> Optional[Dict[str, Any]]:

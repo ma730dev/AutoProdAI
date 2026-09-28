@@ -40,9 +40,10 @@ No asumas la arquitectura. Navega a `docs/index.md`, lee el contexto de tu tarea
 - **Diferencial de Ejecución:** *«Tu contenido. Tu equipo. Tu control»* (velocidad nativa, costo predecible y soberanía absoluta sobre los archivos).
 - **PROHIBIDO:** En cualquier texto visible al usuario (landing, dashboard, tooltips, modales), exponer tecnologías internas (FastAPI, Python, FFmpeg, Whisper, CUDA, DALL-E, pgvector, tokens) o recurrir a clichés de marketing agresivo ("viral", "ganchos de retención", "fórmulas mágicas", "bots que hacen videos solos"). Comunicar siempre desde la capacidad, la organización y el beneficio real para el creador.
 
-### 6. SOBERANÍA Y EXCLUSIVIDAD DE EJECUCIÓN DE ARNESES (`harness/`)
-- **PROHIBIDO** para la IA ejecutar comandos de arneses (`pnpm db:migrate`, `pnpm deploy:prod`, `pnpm deploy:vercel`, `pnpm build:exe`, scripts de `harness/`) de forma autónoma.
-- La IA puede crear, optimizar, documentar y mantener los scripts y herramientas dentro de `harness/`, pero **ÚNICAMENTE el usuario tiene la potestad de disparar su ejecución manual** desde su terminal cuando lo considere pertinente.
+### 6. SOBERANÍA Y EXCLUSIVIDAD DE DESPLIEGUE (GitHub Actions)
+- Los instaladores del motor (`.exe`, `.dmg`) se generan exclusivamente a través de **GitHub Actions**. No existe carpeta `harness/` ni scripts locales de build.
+- **PROHIBIDO** para la IA disparar flujos de CI/CD, releases o workflows de GitHub de forma autónoma.
+- La IA puede preparar el código, bumps de versión en `controlador/version.txt` y documentación de cambios, pero **ÚNICAMENTE el usuario activa los workflows de GitHub Actions** cuando lo considera pertinente.
 
 ### 7. ESTRICTA PROHIBICIÓN DE INICIATIVAS NO PEDIDAS (CERO AGREGADOS FANTASMA EN UI Y CÓDIGO)
 - **PROHIBIDO** crear o insertar botones, barras, enlaces, toggles, widgets flotantes, badges o componentes visuales que el usuario NO haya solicitado explícitamente en su mensaje.

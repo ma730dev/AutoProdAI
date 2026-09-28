@@ -8,118 +8,11 @@ import { toast } from 'sonner';
 import TimelinePro, { TimelineCut, OverlayElement, SubtitleItem, TimelineAudioCut, LoopSubCut } from './timeline/TimelinePro';
 import ProjectHub, { VideoProjectRecord } from './ProjectHub';
 
-export interface VideoItem {
-  id?: string;
-  name: string;
-  path: string;
-  duration?: number;
-  durationFormatted?: string;
-  width?: number;
-  height?: number;
-  sizeMb?: number;
-  hasAudio?: boolean;
-}
-
-export interface SongItem {
-  name: string;
-  path: string;
-  duration_seconds: number;
-  duration_formatted: string;
-  size_mb: number;
-}
-
-export interface FolderOption {
-  name: string;
-  path: string;
-}
-
-export interface VideoFormatPreset {
-  id: string;
-  name: string;
-  category: 'youtube' | 'tiktok_reels' | 'instagram' | 'cinema' | 'classic';
-  ratio: string;
-  width: number;
-  height: number;
-  icon: string;
-  badge: string;
-  description: string;
-  aspectClass: string;
-}
-
-export const VIDEO_FORMAT_PRESETS: VideoFormatPreset[] = [
-  {
-    id: 'yt_16x9',
-    name: '16:9 Horizontal',
-    category: 'youtube',
-    ratio: '16:9',
-    width: 1920,
-    height: 1080,
-    icon: '📺',
-    badge: 'YouTube / TV',
-    description: '1920x1080 Full HD estándar',
-    aspectClass: 'w-full aspect-video max-h-[380px]',
-  },
-  {
-    id: 'shorts_9x16',
-    name: '9:16 Vertical',
-    category: 'tiktok_reels',
-    ratio: '9:16',
-    width: 1080,
-    height: 1920,
-    icon: '📱',
-    badge: 'Shorts / TikTok / Reels',
-    description: '1080x1920 Formato móvil',
-    aspectClass: 'w-[220px] aspect-[9/16] max-h-[380px]',
-  },
-  {
-    id: 'ig_4x5',
-    name: '4:5 Retrato Feed',
-    category: 'instagram',
-    ratio: '4:5',
-    width: 1080,
-    height: 1350,
-    icon: '📸',
-    badge: 'Instagram Feed Pro',
-    description: '1080x1350 Máxima altura en Feed',
-    aspectClass: 'w-[272px] aspect-[4/5] max-h-[360px]',
-  },
-  {
-    id: 'square_1x1',
-    name: '1:1 Cuadrado',
-    category: 'instagram',
-    ratio: '1:1',
-    width: 1080,
-    height: 1080,
-    icon: '⏹️',
-    badge: 'Instagram / X / Facebook',
-    description: '1080x1080 Post cuadrado',
-    aspectClass: 'w-[320px] aspect-square max-h-[340px]',
-  },
-  {
-    id: 'cinema_21x9',
-    name: '21:9 UltraWide',
-    category: 'cinema',
-    ratio: '21:9',
-    width: 2560,
-    height: 1080,
-    icon: '🎥',
-    badge: 'CinemaScope UltraWide',
-    description: '2560x1080 Formato Cine',
-    aspectClass: 'w-full aspect-[21/9] max-h-[310px]',
-  },
-  {
-    id: 'retro_4x3',
-    name: '4:3 Retro TV',
-    category: 'classic',
-    ratio: '4:3',
-    width: 1440,
-    height: 1080,
-    icon: '📼',
-    badge: 'Retro / Clásico',
-    description: '1440x1080 Estética vintage',
-    aspectClass: 'w-[420px] aspect-[4/3] max-h-[360px]',
-  },
-];
+// Tipos compartidos — ahora viven en shared/types.ts
+export type { VideoItem, SongItem, FolderOption, VideoFormatPreset } from './shared/types';
+export { VIDEO_FORMAT_PRESETS } from './shared/types';
+// Importación local para uso interno del orquestador
+import { VIDEO_FORMAT_PRESETS } from './shared/types';
 
 interface VideoStudioProps {
   lang: Language;
@@ -129,6 +22,9 @@ interface VideoStudioProps {
   onRefreshWorkspace?: () => void;
   initialMediaTab?: 'clips' | 'audio' | 'text' | 'subtitles';
 }
+
+// Subcomponentes de subtítulos — ahora viven en tabs/subtitles/
+import SubtitlesPanelContent from './tabs/subtitles/SubtitlesPanelContent';
 
 export default function VideoStudio({
   lang,
@@ -1095,7 +991,7 @@ export default function VideoStudio({
     }
 
     setIsGeneratingSubtitles(true);
-    const toastId = toast.loading(lang === 'es' ? 'Analizando audio y transcribiendo con Whisper IA...' : 'Transcribing audio with Whisper AI...');
+    const toastId = toast.loading('GENERANDO SUBTÍTULOS 0%');
 
     try {
       const res = await ControladorClient.generateSubtitles({
@@ -1113,6 +1009,11 @@ export default function VideoStudio({
         attempts++;
         try {
           const status = await ControladorClient.getSubtitlesJobStatus(jobId);
+          // Actualizar toast con el porcentaje real del job
+          if (status.status === 'processing' || status.status === 'pending') {
+            const pct = status.progress ?? 0;
+            toast.loading(`GENERANDO SUBTÍTULOS ${pct}%`, { id: toastId });
+          }
           if (status.status === 'completed') {
             clearInterval(interval);
             setIsGeneratingSubtitles(false);
@@ -1135,7 +1036,19 @@ export default function VideoStudio({
                   srtContent = preview.content;
                 }
               }
-              const parsed = parseSrtToSubtitles(srtContent);
+              // Compensar el offset de posición del audio en la timeline:
+              // Whisper transcribe desde el seg 0 del archivo, pero si el audio
+              // está colocado en el segundo N de la pista A1, los subtítulos deben
+              // desplazarse ese mismo offset para quedar sincronizados.
+              const audioOffset = audioCuts.length > 0 ? audioCuts[0].startTime : 0;
+              const rawParsed = parseSrtToSubtitles(srtContent);
+              const parsed = audioOffset > 0
+                ? rawParsed.map(sub => ({
+                    ...sub,
+                    start: Number((sub.start + audioOffset).toFixed(2)),
+                    end:   Number((sub.end   + audioOffset).toFixed(2)),
+                  }))
+                : rawParsed;
               setSubtitles(parsed);
               toast.success(
                 lang === 'es'
@@ -3563,173 +3476,21 @@ export default function VideoStudio({
 
           {/* TAB 4: SUBTÍTULOS IA (WHISPER) */}
           {activeMediaTab === 'subtitles' && (
-            <div className="flex flex-col gap-2.5 flex-1 overflow-y-auto minimal-scrollbar">
-              {/* Controles de Generación */}
-              <div className="p-2.5 rounded-xl bg-emerald-950/20 border border-emerald-800/40 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-emerald-300 flex items-center gap-1.5">
-                    <span>🎧</span>
-                    <span>Subtitulador Whisper IA</span>
-                  </span>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-700/60 font-mono text-emerald-400 font-bold">
-                    PISTA S1
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-1.5 text-xs">
-                  <div>
-                    <label className="text-[10px] text-zinc-400 font-semibold block mb-0.5">Idioma</label>
-                    <select
-                      value={subtitleLanguage}
-                      onChange={(e) => setSubtitleLanguage(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 text-xs cursor-pointer focus:border-emerald-500 focus:outline-none"
-                    >
-                      <option value="es">🇪🇸 Español</option>
-                      <option value="en">🇺🇸 English</option>
-                      <option value="pt">🇧🇷 Português</option>
-                      <option value="fr">🇫🇷 Français</option>
-                      <option value="de">🇩🇪 Deutsch</option>
-                      <option value="it">🇮🇹 Italiano</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] text-zinc-400 font-semibold block mb-0.5">Motor</label>
-                    <select
-                      value={subtitleEngine}
-                      onChange={(e) => setSubtitleEngine(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-zinc-200 text-xs cursor-pointer focus:border-emerald-500 focus:outline-none"
-                    >
-                      <option value="local_cpu">💻 CPU Local</option>
-                      <option value="local_gpu">⚡ GPU (CUDA)</option>
-                      <option value="openai_api">☁️ OpenAI API</option>
-                    </select>
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleGenerateSubtitles}
-                  disabled={isGeneratingSubtitles}
-                  className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-950/50 cursor-pointer transition-all disabled:opacity-50"
-                >
-                  {isGeneratingSubtitles ? (
-                    <>
-                      <span className="animate-spin">⏳</span>
-                      <span>{lang === 'es' ? 'Analizando audio...' : 'Transcribing...'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>✨</span>
-                      <span>{lang === 'es' ? 'Generar Subtítulos con IA' : 'Generate AI Subtitles'}</span>
-                    </>
-                  )}
-                </button>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => subtitleFileInputRef.current?.click()}
-                    className="flex-1 py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-[11px] font-semibold border border-zinc-800 flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                  >
-                    <span>📂</span>
-                    <span>Importar SRT</span>
-                  </button>
-                  {subtitles.length > 0 && (
-                    <button
-                      onClick={() => {
-                        const srtContent = subtitlesToSrt(subtitles);
-                        const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `subtitulos_${Date.now()}.srt`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                        toast.success(lang === 'es' ? 'Archivo SRT descargado' : 'SRT downloaded');
-                      }}
-                      className="py-1.5 px-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-emerald-300 text-[11px] font-semibold border border-zinc-800 flex items-center gap-1 cursor-pointer"
-                      title="Descargar archivo .SRT"
-                    >
-                      <span>📥</span>
-                      <span>SRT</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Lista de Bloques de Subtítulos */}
-              <div className="flex flex-col gap-1.5 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
-                    Líneas de Subtítulo ({subtitles.length})
-                  </span>
-                  {subtitles.length > 0 && (
-                    <button
-                      onClick={() => {
-                        setSubtitles([]);
-                        toast.info(lang === 'es' ? 'Pista S1 vaciada' : 'S1 track cleared');
-                      }}
-                      className="text-[10px] text-red-400 hover:text-red-300 cursor-pointer"
-                    >
-                      Vaciar
-                    </button>
-                  )}
-                </div>
-
-                {subtitles.length === 0 ? (
-                  <div className="p-4 rounded-xl border border-zinc-900 bg-zinc-950/50 text-center text-zinc-500 text-xs flex flex-col items-center gap-2">
-                    <span className="text-2xl">🎧</span>
-                    <span>
-                      {lang === 'es'
-                        ? 'No hay subtítulos en la pista S1. Haz clic en «Generar con IA» o importa un archivo .srt'
-                        : 'No subtitles on track S1. Click "Generate with AI" or import .srt'}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-1.5 max-h-[280px] overflow-y-auto minimal-scrollbar pr-1">
-                    {subtitles.map((sub, idx) => {
-                      const isActive = playheadTime >= sub.start && playheadTime <= sub.end;
-                      return (
-                        <div
-                          key={sub.id}
-                          onClick={() => setPlayheadTime(sub.start)}
-                          className={`p-2 rounded-xl border transition-all text-xs cursor-pointer flex flex-col gap-1 ${isActive
-                            ? 'bg-amber-950/40 border-amber-500/80 text-amber-200 ring-1 ring-amber-500/40'
-                            : 'bg-zinc-950/80 border-zinc-800/80 hover:border-zinc-700 text-zinc-300'
-                            }`}
-                        >
-                          <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
-                            <span className="font-bold text-amber-400/90">#{idx + 1}</span>
-                            <span>
-                              {sub.start.toFixed(1)}s ➔ {sub.end.toFixed(1)}s ({(sub.end - sub.start).toFixed(1)}s)
-                            </span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSubtitles(prev => prev.filter(s => s.id !== sub.id));
-                              }}
-                              className="text-zinc-500 hover:text-red-400 px-1 font-bold"
-                              title="Eliminar este subtítulo"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            value={sub.text}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              const newText = e.target.value;
-                              setSubtitles(prev => prev.map(s => s.id === sub.id ? { ...s, text: newText } : s));
-                            }}
-                            className="bg-transparent border-0 border-b border-zinc-800 focus:border-amber-400 text-zinc-200 text-xs px-0 py-0.5 focus:outline-none"
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
+            <SubtitlesPanelContent
+              subtitles={subtitles}
+              setSubtitles={setSubtitles}
+              subtitleLanguage={subtitleLanguage}
+              setSubtitleLanguage={setSubtitleLanguage}
+              subtitleEngine={subtitleEngine}
+              setSubtitleEngine={setSubtitleEngine}
+              isGeneratingSubtitles={isGeneratingSubtitles}
+              handleGenerateSubtitles={handleGenerateSubtitles}
+              subtitleFileInputRef={subtitleFileInputRef}
+              subtitlesToSrt={subtitlesToSrt}
+              playheadTime={playheadTime}
+              setPlayheadTime={setPlayheadTime}
+              lang={lang}
+            />
           )}
         </div>
 

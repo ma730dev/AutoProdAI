@@ -203,32 +203,23 @@ def extract_optimized_audio(source_file: Path, temp_dir: Path, target_id: str, i
 _LOADED_WHISPER_MODELS: Dict[str, Any] = {}
 
 def get_or_create_faster_whisper_model(model_size: str = "large-v3-turbo", device: str = "cpu", compute_type: str = "int8", cpu_threads: int = 2):
-    """Carga y cachea en memoria el modelo de Faster-Whisper con fallback ordenado."""
-    models_to_try = [model_size]
-    if model_size == "large-v3-turbo":
-        models_to_try.extend(["medium", "small"])
-    elif model_size == "medium":
-        models_to_try.append("small")
-
-    last_err = None
-    for m in models_to_try:
-        key = f"{m}_{device}_{compute_type}_{cpu_threads}"
-        if key in _LOADED_WHISPER_MODELS:
-            return _LOADED_WHISPER_MODELS[key]
-        try:
-            from faster_whisper import WhisperModel
-            model = WhisperModel(
-                m,
-                device=device,
-                compute_type=compute_type,
-                cpu_threads=cpu_threads
-            )
-            _LOADED_WHISPER_MODELS[key] = model
-            return model
-        except Exception as e:
-            last_err = e
-            continue
-    raise last_err or Exception(f"No se pudo inicializar el modelo de Whisper: {models_to_try}")
+    """Carga y cachea en memoria el modelo de Faster-Whisper.
+    Siempre usa large-v3-turbo para máxima precisión — no hay fallback a modelos menores."""
+    key = f"{model_size}_{device}_{compute_type}_{cpu_threads}"
+    if key in _LOADED_WHISPER_MODELS:
+        return _LOADED_WHISPER_MODELS[key]
+    try:
+        from faster_whisper import WhisperModel
+        model = WhisperModel(
+            model_size,
+            device=device,
+            compute_type=compute_type,
+            cpu_threads=cpu_threads
+        )
+        _LOADED_WHISPER_MODELS[key] = model
+        return model
+    except Exception as e:
+        raise Exception(f"No se pudo inicializar el modelo Whisper '{model_size}': {e}")
 
 def release_whisper_model():
     """Libera la memoria RAM ocupada por el modelo de Whisper al finalizar la tarea."""
