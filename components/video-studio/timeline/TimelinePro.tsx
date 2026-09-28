@@ -3,6 +3,20 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Language } from '@/app/translations';
 
+export interface LoopSubCut {
+  id?: string;
+  clipPath?: string;
+  path?: string;
+  name: string;
+  startTime?: number;
+  endTime?: number;
+  duration: number;
+  isReversed?: boolean;
+  panX?: number;
+  panY?: number;
+  zoom?: number;
+}
+
 export interface TimelineCut {
   id: string;
   clipPath: string;
@@ -16,7 +30,7 @@ export interface TimelineCut {
   panY?: number;
   zoom?: number;
   isReversed?: boolean;
-  loopClips?: { path: string; name: string; duration: number }[];
+  loopClips?: LoopSubCut[];
 }
 
 export interface OverlayElement {

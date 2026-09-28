@@ -79,19 +79,20 @@ flowchart TD
     - **Duración Real Inmediata:** Los clips se insertan con su duración real analizada por `ffprobe`, eliminando el antiguo límite provisional de 15 segundos.
     - **Búfer de Bucle Eficiente en FFmpeg:** Se sustituyó `size=30000` (que consumía 93 GB de RAM y limitaba a 16m) por cálculo exacto de fotogramas (`loop_frames = max(30, int(round(total_cuts_duration * 30)))`), permitiendo renderizar bucles de 1 a 3 horas sin saturación de memoria.
     - **Regla Adaptativa & Auto-Fit en Timeline:** La regla de tiempo limita dinámicamente las marcas a un máximo de 300 elementos DOM y aplica zoom automático inteligente (`handleFitToView`), evitando congelamientos en timelines de larga duración.
-10. **Herramienta Looper en Inspector Jerárquico (-Video -> ------Looper) y Multi-Clip Secuencial:**
-    - **Bandeja de Medios Pura (Izquierda):** El panel izquierdo se reserva exclusivamente para los recursos de media (`🎬 Clips`, `🎵 Audio`, `🏷️ Textos`, `🎧 Subs`).
-    - **Árbol Jerárquico en Inspector de Elementos (Derecha):**
-      - Nodo Raíz: `- Video` (propiedades de clip individual: In/Out, Mover en Secuencia, Duplicar, Encuadre/Pan-Zoom, Invertir).
-      - Sub-nodo: `------ Looper` (accesible en todo momento, haya o no clip en el timeline).
-    - **Independencia Total de la Línea de Tiempo:** Los clips importados residen en `projectClips` (Media Pool del proyecto) sin forzarse a la línea de tiempo. Si se elimina un corte del timeline, el metraje se conserva intacto en la media del proyecto para crear bucles.
-    - **Selección y Reordenamiento de Videos del Proyecto:** Selector integrado que permite marcar múltiples videos de `projectClips`, ordenar el ciclo secuencial con controles `▲`, `▼` y `✕`, calculando automáticamente la duración exacta de 1 vuelta del ciclo.
+10. **Función Looper Integrada en el Inspector de Video (Efecto/Herramienta de Clip) y Multi-Corte de Línea de Tiempo:**
+    - **Integración Nativa en Inspector de Video:** El Looper no es una pestaña independiente en la barra superior del inspector (`activeInspectorTab === 'clip'`), sino una función operativa integrada en el flujo de efectos del video (junto a recorte, encuadre/pan-zoom e inversión).
+    - **Operación Estricta sobre Cortes de Línea de Tiempo (`timelineCuts`):** El generador de bucles no opera sobre archivos en crudo de la biblioteca, sino exclusivamente sobre los cortes que el usuario ha dispuesto en la línea de tiempo.
+    - **Preservación Total de Efectos por Corte (Inversión, Recorte, Pan & Zoom):** Si el creador coloca dos instancias del mismo video en la línea de tiempo y a una le aplica `isReversed: true` (inversión de video), al seleccionarlas para el ciclo del bucle, cada corte conserva sus modificaciones de forma totalmente independiente:
+      - *Corte 1:* Reproducción hacia adelante con su respectivo recorte y encuadre.
+      - *Corte 2:* Reproducción invertida (`⏪ REV`) con cálculo en vivo en Canvas (`offsetInClip = subEnd - subElapsed`) y filtro `reverse` / `areverse` en FFmpeg.
+    - **Selección y Reordenamiento de Ciclo:** Selector con casillas de verificación para incluir/excluir cualquier corte presente en la línea de tiempo, con indicador `⏪ REV` y controles `▲`, `▼` y `✕` para definir el orden exacto de la vuelta.
     - **Duración con 2 Opciones:**
       - **⏱️ Poner Tiempo:** Minutos, segundos y accesos rápidos (5m, 15m, 30m, 60m).
       - **🎵 Elegir Canciones:** Sincronización automática con la pista A1 o selección manual de canciones de `projectAudioList` con inserción opcional en A1.
     - **Capacidad Universal de Alargar o Acortar Libremente:** Botones de paso fino (`- 1m`, `- 10s`, `+ 10s`, `+ 1m`) en el inspector y manilla interactiva amarilla (`🔁`) en el timeline para estirar o encoger el bloque elásticamente a cualquier segundo exacto.
     - **Rendimiento Máximo en Navegador («Sin romper la PC»):** Toda la secuencia de bucle (sea de 1 clip o de múltiples clips cíclicos) se representa en la pista V1 como **1 solo elemento elástico en el DOM** con muescas doradas vía CSS (`repeating-linear-gradient`). En el canvas, `resolveClipAtTime` conmuta con precisión de milisegundo el sub-clip activo en cada vuelta.
-    - **Pipeline de Exportación Multi-Clip:** Al exportar (`/video/render_timeline`), el ciclo de bucle se expande virtualmente en cortes secuenciales enlazados para que FFmpeg los procese y concatene de forma nativa sin desajustes de códec ni desincronización de audio.
+    - **Pipeline de Exportación Multi-Clip:** Al exportar (`/video/render_timeline`), el ciclo de bucle se expande virtualmente en cortes secuenciales enlazados preservando `start_time`, `end_time`, `is_reversed`, pan y zoom exactos para que FFmpeg los procese y concatene de forma nativa sin desajustes de códec ni desincronización de audio.
+    - **Restauración Limpia al Desactivar:** Al desactivar el bucle, los cortes originales son desempaquetados de nuevo en la línea de tiempo manteniendo sus efectos individuales (`isReversed`, `panX`, `panY`, `zoom`, `startTime`, `endTime`) exactamente como estaban.
 
 ---
 

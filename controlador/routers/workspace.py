@@ -531,9 +531,16 @@ def get_raw_file(path: str):
     )
 
 
+# Extensiones de texto, subtítulos y datos permitidas para lectura, edición y eliminación segura
+ALLOWED_TEXT_EXTENSIONS = {
+    ".md", ".markdown", ".txt",
+    ".srt", ".vtt", ".ass", ".ssa", ".lrc",
+    ".json", ".csv", ".tsv", ".xml", ".yaml", ".yml"
+}
+
 @router.get("/file")
 def read_file(path: str):
-    """Lee el contenido de un archivo (preferiblemente .md o .txt)."""
+    """Lee el contenido de un archivo de texto (Markdown, texto plano, subtítulos, json, etc.)."""
     ws_root = default_workspace_path()
     file_path = Path(path)
     if not file_path.is_absolute():
@@ -544,8 +551,11 @@ def read_file(path: str):
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="El archivo no existe.")
     
-    if file_path.suffix.lower() not in ['.md', '.txt']:
-        raise HTTPException(status_code=400, detail="Solo se permite leer archivos .md o .txt por seguridad.")
+    if file_path.suffix.lower() not in ALLOWED_TEXT_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Solo se permite leer archivos de texto ({', '.join(sorted(ALLOWED_TEXT_EXTENSIONS))}) por seguridad."
+        )
         
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
@@ -566,8 +576,11 @@ def save_file(req: SaveFileRequest):
     # Nos aseguramos de que el directorio exista
     file_path.parent.mkdir(parents=True, exist_ok=True)
         
-    if file_path.suffix.lower() not in ['.md', '.txt']:
-        raise HTTPException(status_code=400, detail="Solo se permite editar archivos .md o .txt por seguridad.")
+    if file_path.suffix.lower() not in ALLOWED_TEXT_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Solo se permite editar archivos de texto ({', '.join(sorted(ALLOWED_TEXT_EXTENSIONS))}) por seguridad."
+        )
         
     try:
         with open(file_path, "w", encoding="utf-8") as f:
@@ -589,8 +602,11 @@ def delete_file(path: str):
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="El archivo no existe.")
         
-    if file_path.suffix.lower() not in ['.md', '.txt']:
-        raise HTTPException(status_code=400, detail="Solo se permite eliminar archivos .md o .txt por seguridad.")
+    if file_path.suffix.lower() not in ALLOWED_TEXT_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Solo se permite eliminar archivos de texto ({', '.join(sorted(ALLOWED_TEXT_EXTENSIONS))}) por seguridad."
+        )
         
     try:
         file_path.unlink()

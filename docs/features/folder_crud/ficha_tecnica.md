@@ -26,7 +26,7 @@ flowchart LR
 | `/workspace/pick` | `GET` | — | Lanza el explorador nativo de Windows (`PowerShell`) o macOS (`osascript`) para seleccionar carpeta. |
 | `/workspace/create` | `POST` | `{ target_path, folders, folder_name, subfolders }` | Crea carpetas individuales o en bloque con anclaje automático a raíz de workspace. |
 | `/workspace/delete_folder` | `POST` | `{ target_path, folders, folder_name }` | Eliminación segura de directorios con `shutil.rmtree` y búsqueda insensible a tildes/mayúsculas. |
-| `/workspace/file` | `GET` / `POST` / `DELETE` | `{ path, content }` | Lectura, escritura y borrado de archivos (`.md`, `.txt`, `.json`). |
+| `/workspace/file` | `GET` / `POST` / `DELETE` | `{ path, content }` | Lectura, escritura y borrado de archivos de texto seguro (`.md`, `.txt`, `.srt`, `.vtt`, `.json`, etc.). |
 
 ---
 
