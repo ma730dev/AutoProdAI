@@ -580,7 +580,13 @@ def get_subtitles_status(job_id: str):
 @router.get("/preview_file")
 def preview_subtitle_file(path: str):
     """Obtiene el texto de un archivo .srt, .vtt o .json para editarlo en el navegador."""
+    ws_root = default_workspace_path()
     file_path = Path(path)
+    if not file_path.is_absolute():
+        file_path = (ws_root / file_path).resolve()
+    else:
+        file_path = file_path.resolve()
+
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Archivo de subtítulo no encontrado.")
 
@@ -598,7 +604,13 @@ def preview_subtitle_file(path: str):
 @router.post("/save_file")
 def save_subtitle_file(req: SubtitleFileSaveRequest):
     """Guarda los cambios editados de un archivo de subtítulo."""
+    ws_root = default_workspace_path()
     file_path = Path(req.path)
+    if not file_path.is_absolute():
+        file_path = (ws_root / file_path).resolve()
+    else:
+        file_path = file_path.resolve()
+
     if not file_path.parent.exists():
         file_path.parent.mkdir(parents=True, exist_ok=True)
 

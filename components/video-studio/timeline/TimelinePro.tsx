@@ -15,6 +15,7 @@ export interface LoopSubCut {
   panX?: number;
   panY?: number;
   zoom?: number;
+  isMissing?: boolean;
 }
 
 export interface TimelineCut {
@@ -31,6 +32,7 @@ export interface TimelineCut {
   zoom?: number;
   isReversed?: boolean;
   loopClips?: LoopSubCut[];
+  isMissing?: boolean;
 }
 
 export interface OverlayElement {
@@ -51,6 +53,7 @@ export interface TimelineAudioCut {
   startTime: number;
   duration: number;
   volume: number;
+  isMissing?: boolean;
 }
 
 export interface SubtitleItem {
@@ -71,6 +74,7 @@ interface TimelineProProps {
   selectedCutId: string | null;
   onSelectCut: (id: string | null) => void;
   onSplitAtPlayhead: () => void;
+  missingCutIds?: string[];
   // Overlays
   overlays: OverlayElement[];
   onUpdateOverlays: (overlays: OverlayElement[]) => void;
@@ -81,6 +85,7 @@ interface TimelineProProps {
   onUpdateAudioCuts?: (cuts: TimelineAudioCut[]) => void;
   selectedAudioCutId?: string | null;
   onSelectAudioCut?: (id: string | null) => void;
+  missingAudioCutIds?: string[];
   // Audio legacy / global
   musicName?: string;
   musicVolume: number;
@@ -108,6 +113,7 @@ export default function TimelinePro({
   selectedCutId,
   onSelectCut,
   onSplitAtPlayhead,
+  missingCutIds = [],
   overlays,
   onUpdateOverlays,
   selectedOverlayId,
@@ -117,6 +123,7 @@ export default function TimelinePro({
   onUpdateAudioCuts,
   selectedAudioCutId = null,
   onSelectAudioCut,
+  missingAudioCutIds = [],
   // Audio legacy / global
   musicName,
   musicVolume,
@@ -843,6 +850,7 @@ export default function TimelinePro({
                   const cycleWidth = Math.max(cut.duration * pixelsPerSecond, 1);
                   const isSelected = selectedCutId === cut.id;
                   const loopCycles = cut.duration > 0 ? (effectiveCutDuration / cut.duration) : 1;
+                  const isMissing = !!cut.isMissing || missingCutIds.includes(cut.id);
                   return (
                     <div
                       key={cut.id}
@@ -888,7 +896,11 @@ export default function TimelinePro({
                       className={`h-16 rounded-lg relative flex flex-col justify-between overflow-hidden ${
                         cutWidth >= 40 ? 'px-2 py-1.5' : 'p-0.5'
                       } select-none transition-all cursor-pointer border shrink-0 ${
-                        isLooped
+                        isMissing
+                          ? (isSelected
+                              ? 'bg-red-950/95 border-red-500 shadow-xl shadow-red-950/80 ring-2 ring-red-400 text-red-100'
+                              : 'bg-red-950/70 border-red-600/80 hover:border-red-400 text-red-200')
+                          : isLooped
                           ? (isSelected
                               ? 'bg-amber-950/90 border-amber-400 shadow-xl shadow-amber-950/70 ring-2 ring-amber-400 text-amber-100'
                               : 'bg-amber-950/60 border-amber-500/80 hover:border-amber-400 text-amber-200')
@@ -896,7 +908,13 @@ export default function TimelinePro({
                               ? 'bg-zinc-900 border-purple-400 shadow-xl shadow-purple-950/50 ring-1 ring-purple-400 text-white'
                               : 'bg-zinc-950/90 border-zinc-800 hover:border-purple-600/70 text-zinc-300')
                       }`}
-                      title={isLooped ? `Bucle: ${cut.name} (${effectiveCutDuration.toFixed(1)}s, ${loopCycles.toFixed(1)} vueltas)` : `Clip ${idx + 1}: ${cut.name} (${cut.duration.toFixed(1)}s)`}
+                      title={
+                        isMissing
+                          ? `⚠️ ARCHIVO NO ACCESIBLE / OFFLINE: ${cut.name} (${cut.clipPath})`
+                          : isLooped
+                          ? `Bucle: ${cut.name} (${effectiveCutDuration.toFixed(1)}s, ${loopCycles.toFixed(1)} vueltas)`
+                          : `Clip ${idx + 1}: ${cut.name} (${cut.duration.toFixed(1)}s)`
+                      }
                     >
                       {/* Handles de recorte interactivo (solo si cutWidth >= 24px) */}
                       {cutWidth >= 24 && (
@@ -915,7 +933,7 @@ export default function TimelinePro({
                               });
                             }}
                             className={`absolute left-0 top-0 bottom-0 w-2 hover:w-3 cursor-ew-resize z-20 flex items-center justify-center transition-all group/lhandle rounded-l-lg ${
-                              isLooped ? 'bg-amber-500/40 hover:bg-amber-400' : 'bg-purple-500/30 hover:bg-purple-400'
+                              isMissing ? 'bg-red-500/40 hover:bg-red-400' : isLooped ? 'bg-amber-500/40 hover:bg-amber-400' : 'bg-purple-500/30 hover:bg-purple-400'
                             }`}
                             title="Recortar inicio del video (In-point)"
                           >
@@ -956,7 +974,9 @@ export default function TimelinePro({
                                   originalDuration: cut.duration,
                                 });
                               }}
-                              className="absolute right-0 top-0 bottom-0 w-2 hover:w-3 bg-purple-500/30 hover:bg-purple-400 cursor-ew-resize z-20 flex items-center justify-center transition-all group/rhandle rounded-r-lg"
+                              className={`absolute right-0 top-0 bottom-0 w-2 hover:w-3 cursor-ew-resize z-20 flex items-center justify-center transition-all group/rhandle rounded-r-lg ${
+                                isMissing ? 'bg-red-500/40 hover:bg-red-400' : 'bg-purple-500/30 hover:bg-purple-400'
+                              }`}
                               title="Recortar final del video (Out-point)"
                             >
                               <div className="w-[1.5px] h-4 bg-white/70 group-hover/rhandle:bg-white rounded" />
@@ -968,15 +988,19 @@ export default function TimelinePro({
                       {/* Sub-capa Superior: Metadatos de Video */}
                       {cutWidth >= 40 && (
                         <div className={`flex items-center justify-between text-[10px] font-bold truncate gap-1 px-1.5 py-0.5 rounded ${
-                          isLooped ? 'bg-amber-950/80 text-amber-200 border border-amber-600/50' : 'bg-zinc-900/60 text-white'
+                          isMissing
+                            ? 'bg-red-950/90 text-red-200 border border-red-500/60'
+                            : isLooped
+                            ? 'bg-amber-950/80 text-amber-200 border border-amber-600/50'
+                            : 'bg-zinc-900/60 text-white'
                         }`}>
                           <span className="truncate flex items-center gap-1">
-                            <span className={isLooped ? "text-amber-400" : "text-purple-400"}>
-                              {isLooped ? '🔁' : '🎬'}
+                            <span className={isMissing ? "text-red-400" : isLooped ? "text-amber-400" : "text-purple-400"}>
+                              {isMissing ? '⚠️' : isLooped ? '🔁' : '🎬'}
                             </span>
                             {cutWidth >= 70 && (
                               <span className="truncate">
-                                {isLooped ? `BUCLE: ${cut.name}` : `Clip ${idx + 1}: ${cut.name}`}
+                                {isMissing ? `OFFLINE: ${cut.name}` : isLooped ? `BUCLE: ${cut.name}` : `Clip ${idx + 1}: ${cut.name}`}
                               </span>
                             )}
                             {isLooped && cutWidth >= 130 && (
@@ -987,6 +1011,14 @@ export default function TimelinePro({
                           </span>
                           {cutWidth >= 115 && (
                             <div className="flex items-center gap-1 shrink-0">
+                              {isMissing && (
+                                <span
+                                  className="text-[8px] px-1 py-0.2 rounded font-mono font-bold bg-red-900/90 text-red-200 border border-red-500"
+                                  title="Recurso de video no encontrado en disco o inaccesible"
+                                >
+                                  OFFLINE
+                                </span>
+                              )}
                               {cut.isReversed && (
                                 <span
                                   className="text-[8px] px-1 py-0.2 rounded font-mono font-bold bg-rose-950/80 text-rose-300 border border-rose-600/70"
@@ -1018,30 +1050,32 @@ export default function TimelinePro({
                       {/* Si el corte es estrecho (entre 18 y 40px), mostrar icono centrado */}
                       {cutWidth >= 18 && cutWidth < 40 && (
                         <div className={`flex flex-col items-center justify-center h-full font-bold text-[10px] ${
-                          isLooped ? 'text-amber-400' : 'text-purple-300'
+                          isMissing ? 'text-red-400' : isLooped ? 'text-amber-400' : 'text-purple-300'
                         }`}>
-                          <span>{isLooped ? '🔁' : '🎬'}</span>
+                          <span>{isMissing ? '⚠️' : isLooped ? '🔁' : '🎬'}</span>
                         </div>
                       )}
 
                       {/* Sub-capa Inferior: Gráfica de Audio / Waveform */}
                       {cutWidth >= 60 && (
                         <div className={`flex items-center justify-between px-1.5 py-0.5 rounded text-[9px] font-mono border ${
-                          isLooped
+                          isMissing
+                            ? 'bg-red-950/60 border-red-900/70 text-red-300'
+                            : isLooped
                             ? 'bg-amber-950/50 border-amber-900/60 text-amber-300'
                             : (muteOriginalAudio
                                 ? 'bg-amber-950/30 border-amber-900/40 text-amber-400/90'
                                 : 'bg-indigo-950/40 border-indigo-900/40 text-indigo-300')
                         }`}>
                           <div className="flex items-center gap-1 truncate">
-                            <span>{muteOriginalAudio ? '🔇' : '🔊'}</span>
+                            <span>{isMissing ? '⚠️' : muteOriginalAudio ? '🔇' : '🔊'}</span>
                             {cutWidth >= 110 && (
                               <span className="truncate">
-                                {muteOriginalAudio ? 'Audio Mudo' : (isLooped ? 'Audio en Loop' : 'Cámara (100%)')}
+                                {isMissing ? 'Recurso faltante' : muteOriginalAudio ? 'Audio Mudo' : (isLooped ? 'Audio en Loop' : 'Cámara (100%)')}
                               </span>
                             )}
                           </div>
-                          <span className={`text-[9px] shrink-0 font-bold ${isLooped ? 'text-amber-300' : 'text-zinc-400'}`}>
+                          <span className={`text-[9px] shrink-0 font-bold ${isMissing ? 'text-red-300' : isLooped ? 'text-amber-300' : 'text-zinc-400'}`}>
                             {isLooped ? `${effectiveCutDuration.toFixed(1)}s (base ${cut.duration.toFixed(1)}s)` : `${cut.duration.toFixed(1)}s`}
                           </span>
                         </div>
@@ -1197,6 +1231,7 @@ export default function TimelinePro({
                     const leftPx = cut.startTime * pixelsPerSecond;
                     const widthPx = Math.max(cut.duration * pixelsPerSecond, 2);
                     const isSelected = selectedAudioCutId === cut.id;
+                    const isAudioMissing = !!cut.isMissing || missingAudioCutIds.includes(cut.id);
 
                     return (
                       <div
@@ -1230,11 +1265,19 @@ export default function TimelinePro({
                         className={`absolute top-1.5 bottom-1.5 rounded-lg select-none cursor-grab active:cursor-grabbing border flex flex-col justify-between ${
                           widthPx >= 40 ? 'p-1.5' : 'p-0.5'
                         } overflow-hidden transition-all shadow-md group ${
-                          isSelected
+                          isAudioMissing
+                            ? (isSelected
+                                ? 'bg-red-950/95 border-red-500 ring-2 ring-red-400 shadow-red-950/80 z-20 text-red-100'
+                                : 'bg-red-950/80 border-red-600/80 hover:border-red-400 z-10 text-red-200')
+                            : isSelected
                             ? 'bg-gradient-to-r from-indigo-900/90 to-purple-900/90 border-indigo-400 ring-2 ring-indigo-400/80 shadow-indigo-950/80 z-20'
                             : 'bg-gradient-to-r from-indigo-950/80 to-zinc-900/80 border-indigo-700/50 hover:border-indigo-500/80 z-10'
                         }`}
-                        title={`${cut.name} (${cut.duration.toFixed(1)}s, ${formatTimecode(cut.startTime)})`}
+                        title={
+                          isAudioMissing
+                            ? `⚠️ AUDIO NO ACCESIBLE / OFFLINE: ${cut.name} (${cut.audioPath})`
+                            : `${cut.name} (${cut.duration.toFixed(1)}s, ${formatTimecode(cut.startTime)})`
+                        }
                       >
                         {/* Handles de audio (solo si widthPx >= 24px) */}
                         {widthPx >= 24 && (
@@ -1251,7 +1294,9 @@ export default function TimelinePro({
                                   originalDuration: cut.duration,
                                 });
                               }}
-                              className="absolute left-0 top-0 bottom-0 w-2 hover:w-3 bg-indigo-500/30 hover:bg-indigo-400 cursor-ew-resize z-20 flex items-center justify-center transition-all rounded-l-lg group/lhandle"
+                              className={`absolute left-0 top-0 bottom-0 w-2 hover:w-3 cursor-ew-resize z-20 flex items-center justify-center transition-all rounded-l-lg group/lhandle ${
+                                isAudioMissing ? 'bg-red-500/40 hover:bg-red-400' : 'bg-indigo-500/30 hover:bg-indigo-400'
+                              }`}
                               title="Ajustar inicio de audio"
                             >
                               <div className="w-[1.5px] h-3 bg-white/70 group-hover/lhandle:bg-white rounded" />
@@ -1269,7 +1314,9 @@ export default function TimelinePro({
                                   originalDuration: cut.duration,
                                 });
                               }}
-                              className="absolute right-0 top-0 bottom-0 w-2 hover:w-3 bg-indigo-500/30 hover:bg-indigo-400 cursor-ew-resize z-20 flex items-center justify-center transition-all rounded-r-lg group/rhandle"
+                              className={`absolute right-0 top-0 bottom-0 w-2 hover:w-3 cursor-ew-resize z-20 flex items-center justify-center transition-all rounded-r-lg group/rhandle ${
+                                isAudioMissing ? 'bg-red-500/40 hover:bg-red-400' : 'bg-indigo-500/30 hover:bg-indigo-400'
+                              }`}
                               title="Ajustar duración de audio"
                             >
                               <div className="w-[1.5px] h-3 bg-white/70 group-hover/rhandle:bg-white rounded" />
@@ -1279,21 +1326,39 @@ export default function TimelinePro({
 
                         {/* Icono cuando es estrecho (entre 18 y 40px) */}
                         {widthPx >= 18 && widthPx < 40 && (
-                          <div className="flex items-center justify-center h-full text-indigo-300 font-bold text-[10px]">
-                            <span>🎵</span>
+                          <div className={`flex items-center justify-center h-full font-bold text-[10px] ${
+                            isAudioMissing ? 'text-red-400' : 'text-indigo-300'
+                          }`}>
+                            <span>{isAudioMissing ? '⚠️' : '🎵'}</span>
                           </div>
                         )}
 
                         {/* Header: Track title, index, volume, delete */}
                         {widthPx >= 40 && (
-                          <div className="flex items-center justify-between text-[10px] font-bold text-indigo-200 truncate gap-1 bg-zinc-900/60 px-1 py-0.5 rounded">
+                          <div className={`flex items-center justify-between text-[10px] font-bold truncate gap-1 px-1 py-0.5 rounded ${
+                            isAudioMissing ? 'bg-red-950/90 text-red-200 border border-red-500/60' : 'bg-zinc-900/60 text-indigo-200'
+                          }`}>
                             <span className="truncate flex items-center gap-1">
-                              <span className="text-indigo-400">🎵</span>
-                              {widthPx >= 70 && <span className="truncate">{cut.name}</span>}
+                              <span className={isAudioMissing ? "text-red-400" : "text-indigo-400"}>
+                                {isAudioMissing ? '⚠️' : '🎵'}
+                              </span>
+                              {widthPx >= 70 && (
+                                <span className="truncate">
+                                  {isAudioMissing ? `OFFLINE: ${cut.name}` : cut.name}
+                                </span>
+                              )}
                             </span>
                             <div className="flex items-center gap-1 shrink-0">
+                              {isAudioMissing && (
+                                <span
+                                  className="text-[8px] px-1 py-0.2 rounded font-mono font-bold bg-red-900/90 text-red-200 border border-red-500"
+                                  title="Pista de audio no encontrada o inaccesible"
+                                >
+                                  OFFLINE
+                                </span>
+                              )}
                               {widthPx >= 100 && (
-                                <span className="text-[9px] font-mono text-indigo-300">
+                                <span className={`text-[9px] font-mono ${isAudioMissing ? 'text-red-300' : 'text-indigo-300'}`}>
                                   {Math.round((cut.volume ?? 1) * 100)}%
                                 </span>
                               )}

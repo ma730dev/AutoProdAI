@@ -1023,13 +1023,19 @@ export default function VideoStudio({
               const srtPath = status.results[0].srt_path;
               let srtContent = '';
               try {
-                srtContent = await ControladorClient.readFile(srtPath);
-              } catch (readErr) {
+                // Intentar leer por /workspace/raw primero (soporta cualquier formato y streaming directo)
+                const rawRes = await fetch(`${getControladorUrl()}/workspace/raw?path=${encodeURIComponent(srtPath)}`);
+                if (rawRes.ok) {
+                  srtContent = await rawRes.text();
+                } else {
+                  srtContent = await ControladorClient.readFile(srtPath);
+                }
+              } catch {
                 try {
+                  srtContent = await ControladorClient.readFile(srtPath);
+                } catch {
                   const preview = await ControladorClient.previewSubtitleFile(srtPath);
                   srtContent = preview.content;
-                } catch {
-                  throw readErr;
                 }
               }
               const parsed = parseSrtToSubtitles(srtContent);

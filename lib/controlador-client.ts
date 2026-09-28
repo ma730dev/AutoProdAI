@@ -382,13 +382,29 @@ export class ControladorClient {
   static async readFile(path: string): Promise<string> {
     try {
       const response = await fetch(`${getControladorUrl()}/workspace/file?path=${encodeURIComponent(path)}`);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Error leyendo el archivo');
+      if (response.ok) {
+        const data = await response.json();
+        return data.content;
       }
-      const data = await response.json();
-      return data.content;
+
+      // Si /workspace/file rechaza la extensión (ej. motor local previo sin reiniciar),
+      // recurrir al lector de medios /workspace/raw que entrega el archivo sin restricción
+      const rawResponse = await fetch(`${getControladorUrl()}/workspace/raw?path=${encodeURIComponent(path)}`);
+      if (rawResponse.ok) {
+        return await rawResponse.text();
+      }
+
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Error leyendo el archivo');
     } catch (error) {
+      try {
+        const rawResponse = await fetch(`${getControladorUrl()}/workspace/raw?path=${encodeURIComponent(path)}`);
+        if (rawResponse.ok) {
+          return await rawResponse.text();
+        }
+      } catch {
+        // Ignorar fallo secundario y propagar error principal
+      }
       console.error('Controlador Client: readFile failed', error);
       throw error;
     }
