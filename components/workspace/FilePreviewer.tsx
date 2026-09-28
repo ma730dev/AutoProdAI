@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { ControladorClient } from '@/lib/controlador-client';
+import { ControladorClient, getMediaUrl } from '@/lib/controlador-client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -103,7 +103,7 @@ export default function FilePreviewer({ filePath, onClose }: Props) {
     );
   }
 
-  const mediaUrl = `http://127.0.0.1:8000/workspace/raw?path=${encodeURIComponent(filePath)}`;
+  const mediaUrl = getMediaUrl(filePath);
 
   return (
     <div className="flex-1 flex flex-col bg-[#09090b] overflow-hidden h-full">

@@ -526,7 +526,9 @@ def get_raw_file(path: str):
         content_disposition_type="inline",
         headers={
             "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=3600"
+            "Cache-Control": "public, max-age=3600",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Private-Network": "true"
         }
     )
 

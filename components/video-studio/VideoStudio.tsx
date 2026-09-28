@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Language } from '@/app/translations';
-import { ControladorClient, getControladorUrl } from '@/lib/controlador-client';
+import { ControladorClient, getControladorUrl, getMediaUrl } from '@/lib/controlador-client';
 import { Channel } from '@/components/dashboard/types';
 import { toast } from 'sonner';
 import TimelinePro, { TimelineCut, OverlayElement, SubtitleItem, TimelineAudioCut, LoopSubCut } from './timeline/TimelinePro';
@@ -193,6 +193,102 @@ export default function VideoStudio({
   const selectedCut = timelineCuts.find(c => c.id === selectedCutId);
   const selectedOverlay = overlays.find(o => o.id === selectedOverlayId);
   const selectedAudioCut = audioCuts.find(a => a.id === selectedAudioCutId);
+
+  // ── ESTADO Y DETECCIÓN DE ACCESIBILIDAD DE RECURSOS (OFFLINE / INACCESIBLES) ──
+  const [missingMediaPaths, setMissingMediaPaths] = useState<Set<string>>(new Set());
+
+  const verifyMediaAccessibility = useCallback(async (paths: string[]) => {
+    const uniquePaths = Array.from(new Set(paths.filter(p => !!p && typeof p === 'string')));
+    if (uniquePaths.length === 0) return;
+
+    const newlyMissing = new Set<string>();
+
+    await Promise.all(
+      uniquePaths.map(async (filePath) => {
+        try {
+          const url = getMediaUrl(filePath);
+          const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(2000) });
+          if (!res.ok) {
+            // Si el motor local no responde o da error, intentar fallback si es ruta local
+            if (!filePath.startsWith('http')) {
+              try {
+                const fallbackUrl = `/api/assets/stream?path=${encodeURIComponent(filePath)}`;
+                const fbRes = await fetch(fallbackUrl, { method: 'HEAD', signal: AbortSignal.timeout(2000) });
+                if (!fbRes.ok) newlyMissing.add(filePath);
+              } catch {
+                newlyMissing.add(filePath);
+              }
+            } else {
+              newlyMissing.add(filePath);
+            }
+          }
+        } catch {
+          // Si falló la conexión al endpoint principal, intentar fallback
+          try {
+            const fallbackUrl = `/api/assets/stream?path=${encodeURIComponent(filePath)}`;
+            const fbRes = await fetch(fallbackUrl, { method: 'HEAD', signal: AbortSignal.timeout(2000) });
+            if (!fbRes.ok) newlyMissing.add(filePath);
+          } catch {
+            newlyMissing.add(filePath);
+          }
+        }
+      })
+    );
+
+    setMissingMediaPaths(prev => {
+      let changed = false;
+      for (const p of newlyMissing) {
+        if (!prev.has(p)) { changed = true; break; }
+      }
+      if (!changed) {
+        for (const p of uniquePaths) {
+          if (!newlyMissing.has(p) && prev.has(p)) { changed = true; break; }
+        }
+      }
+      if (!changed) return prev;
+
+      const next = new Set(prev);
+      for (const p of uniquePaths) {
+        if (!newlyMissing.has(p)) next.delete(p);
+      }
+      for (const p of newlyMissing) {
+        next.add(p);
+      }
+      return next;
+    });
+  }, []);
+
+  // Verificar accesibilidad periódica / reactiva sobre todos los recursos del proyecto
+  useEffect(() => {
+    const allPaths: string[] = [];
+    timelineCuts.forEach(c => {
+      if (c.clipPath) allPaths.push(c.clipPath);
+      if (c.loopClips && c.loopClips.length > 0) {
+        c.loopClips.forEach(lc => { if (lc.clipPath) allPaths.push(lc.clipPath); });
+      }
+    });
+    audioCuts.forEach(a => { if (a.audioPath) allPaths.push(a.audioPath); });
+    projectClips.forEach(p => { if (p.path) allPaths.push(p.path); });
+    projectAudioList.forEach(s => { if (s.path) allPaths.push(s.path); });
+    if (musicAudioPath) allPaths.push(musicAudioPath);
+
+    if (allPaths.length > 0) {
+      verifyMediaAccessibility(allPaths);
+    }
+  }, [timelineCuts, audioCuts, projectClips, projectAudioList, musicAudioPath, verifyMediaAccessibility]);
+
+  const missingCutIds = useMemo(() => {
+    return timelineCuts
+      .filter(c => c.isMissing || missingMediaPaths.has(c.clipPath))
+      .map(c => c.id);
+  }, [timelineCuts, missingMediaPaths]);
+
+  const missingAudioCutIds = useMemo(() => {
+    return audioCuts
+      .filter(a => a.isMissing || missingMediaPaths.has(a.audioPath))
+      .map(a => a.id);
+  }, [audioCuts, missingMediaPaths]);
+
 
   // Sincronización contextual de pestañas según selección
   useEffect(() => {
@@ -679,7 +775,7 @@ export default function VideoStudio({
       player.pause();
       setAuditioningAudioPath(null);
     } else {
-      player.src = `/api/assets/stream?path=${encodeURIComponent(audioPath)}`;
+      player.src = getMediaUrl(audioPath);
       player.load();
       player.play().catch(() => { });
       setAuditioningAudioPath(audioPath);
@@ -980,16 +1076,17 @@ export default function VideoStudio({
 
   const handleGenerateSubtitles = async () => {
     let sourcePath = '';
-    if (timelineCuts.length > 0) {
-      sourcePath = timelineCuts[0].clipPath;
-    } else if (audioCuts.length > 0) {
+    // Priorizar pistas de audio A1 (canción/voz) o música de fondo sobre los clips de video V1
+    if (audioCuts.length > 0) {
       sourcePath = audioCuts[0].audioPath;
     } else if (musicAudioPath) {
       sourcePath = musicAudioPath;
-    } else if (projectClips.length > 0) {
-      sourcePath = projectClips[0].path;
+    } else if (timelineCuts.length > 0) {
+      sourcePath = timelineCuts[0].clipPath;
     } else if (projectAudioList.length > 0) {
       sourcePath = projectAudioList[0].path;
+    } else if (projectClips.length > 0) {
+      sourcePath = projectClips[0].path;
     }
 
     if (!sourcePath) {
@@ -1183,7 +1280,7 @@ export default function VideoStudio({
     if (previewVideoUrl) return previewVideoUrl;
     if (!currentResolvedClip) return null;
     const clipPath = (currentResolvedClip as any).activeClipPath || currentResolvedClip.cut.clipPath;
-    return `/api/assets/stream?path=${encodeURIComponent(clipPath)}`;
+    return getMediaUrl(clipPath);
   }, [previewVideoUrl, currentResolvedClip]);
 
   // ── RELOJ MAESTRO DE REPRODUCCIÓN (REQUESTANIMATIONFRAME) ──
@@ -1303,7 +1400,7 @@ export default function VideoStudio({
       }
 
       const activeCut = currentResolvedAudioCut;
-      const expectedAudioSrc = `/api/assets/stream?path=${encodeURIComponent(activeCut.audioPath)}`;
+      const expectedAudioSrc = getMediaUrl(activeCut.audioPath);
       const targetAudioOffset = Math.max(0, playheadTime - activeCut.startTime);
       const effectiveVol = Math.max(0, Math.min(1, musicVolume * (activeCut.volume ?? 1)));
       const currentSrc = audio.currentSrc || audio.src || '';
@@ -1343,7 +1440,7 @@ export default function VideoStudio({
       return;
     }
 
-    const expectedAudioSrc = `/api/assets/stream?path=${encodeURIComponent(musicAudioPath)}`;
+    const expectedAudioSrc = getMediaUrl(musicAudioPath);
     const currentSrc = audio.currentSrc || audio.src || '';
     const hasDifferentSource = !currentSrc.includes(encodeURIComponent(musicAudioPath)) && !currentSrc.endsWith(musicAudioPath);
 
@@ -2458,6 +2555,22 @@ export default function VideoStudio({
                   </button>
                 </div>
 
+                {/* Alerta de Archivo Inaccesible / Offline */}
+                {(selectedCut.isMissing || missingMediaPaths.has(selectedCut.clipPath)) && (
+                  <div className="p-2.5 rounded-xl bg-red-950/80 border border-red-500/80 text-red-200 text-xs flex flex-col gap-1 shadow-sm">
+                    <div className="flex items-center gap-1.5 font-bold text-red-300">
+                      <span>⚠️</span>
+                      <span>Recurso no accesible / Offline</span>
+                    </div>
+                    <p className="text-[11px] text-red-300/80 font-mono break-all">
+                      {selectedCut.clipPath}
+                    </p>
+                    <span className="text-[10px] text-zinc-400">
+                      El archivo original no se encuentra en el disco o la ruta ha cambiado.
+                    </span>
+                  </div>
+                )}
+
                 {/* 1. Recorte In / Out Points */}
                 <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
                   <span className="text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1">
@@ -2767,6 +2880,22 @@ export default function VideoStudio({
                 <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 font-semibold truncate text-[11px]" title={selectedAudioCut.name}>
                   {selectedAudioCut.name}
                 </div>
+
+                {/* Alerta de Audio Inaccesible / Offline */}
+                {(selectedAudioCut.isMissing || missingMediaPaths.has(selectedAudioCut.audioPath)) && (
+                  <div className="p-2 rounded-xl bg-red-950/80 border border-red-500/80 text-red-200 text-xs flex flex-col gap-1 shadow-sm">
+                    <div className="flex items-center gap-1.5 font-bold text-red-300">
+                      <span>⚠️</span>
+                      <span>Pista de audio no accesible / Offline</span>
+                    </div>
+                    <p className="text-[11px] text-red-300/80 font-mono break-all">
+                      {selectedAudioCut.audioPath}
+                    </p>
+                    <span className="text-[10px] text-zinc-400">
+                      El archivo original no se encuentra en el disco o la ruta ha cambiado.
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center justify-between">
@@ -3184,29 +3313,42 @@ export default function VideoStudio({
                     {lang === 'es' ? 'No hay clips importados aún. Arrastra archivos desde el explorador o importa uno arriba.' : 'No clips imported yet.'}
                   </div>
                 ) : (
-                  projectClips.map((clip) => (
-                    <div
-                      key={clip.path}
-                      className="flex items-center justify-between p-2 rounded-xl bg-zinc-950/80 border border-zinc-800 hover:border-purple-700/60 transition-all text-xs"
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <span className="text-purple-400">🎬</span>
-                        <div className="flex flex-col truncate">
-                          <span className="font-semibold text-zinc-200 truncate">{clip.name}</span>
-                          <span className="text-[10px] font-mono text-zinc-500">
-                            {clip.durationFormatted || `${Math.round(clip.duration || 0)}s`} • {clip.sizeMb ? `${clip.sizeMb}MB` : 'Video'}
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleAddClipToTimeline(clip.path, clip.name)}
-                        className="px-2 py-1 rounded bg-purple-950/80 hover:bg-purple-900 text-purple-200 text-[10px] font-bold border border-purple-700/60 cursor-pointer shrink-0"
-                        title="Añadir a la línea de tiempo"
+                  projectClips.map((clip) => {
+                    const isMissing = missingMediaPaths.has(clip.path);
+                    return (
+                      <div
+                        key={clip.path}
+                        className={`flex items-center justify-between p-2 rounded-xl border transition-all text-xs ${
+                          isMissing
+                            ? 'bg-red-950/70 border-red-500/80 text-red-200'
+                            : 'bg-zinc-950/80 border-zinc-800 hover:border-purple-700/60'
+                        }`}
                       >
-                        + Añadir
-                      </button>
-                    </div>
-                  ))
+                        <div className="flex items-center gap-2 truncate">
+                          <span className={isMissing ? "text-red-400" : "text-purple-400"}>
+                            {isMissing ? '⚠️' : '🎬'}
+                          </span>
+                          <div className="flex flex-col truncate">
+                            <span className={`font-semibold truncate ${isMissing ? 'text-red-200 font-medium' : 'text-zinc-200'}`}>{clip.name}</span>
+                            <span className={`text-[10px] font-mono ${isMissing ? 'text-red-300/80' : 'text-zinc-500'}`}>
+                              {isMissing ? '⚠️ Archivo inaccesible / Offline' : `${clip.durationFormatted || `${Math.round(clip.duration || 0)}s`} • ${clip.sizeMb ? `${clip.sizeMb}MB` : 'Video'}`}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleAddClipToTimeline(clip.path, clip.name)}
+                          className={`px-2 py-1 rounded text-[10px] font-bold border cursor-pointer shrink-0 ${
+                            isMissing
+                              ? 'bg-red-900/60 hover:bg-red-800 text-red-200 border-red-600/70'
+                              : 'bg-purple-950/80 hover:bg-purple-900 text-purple-200 border-purple-700/60'
+                          }`}
+                          title="Añadir a la línea de tiempo"
+                        >
+                          + Añadir
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -3253,14 +3395,18 @@ export default function VideoStudio({
                   projectAudioList.map((song, idx) => {
                     const isAuditioning = auditioningAudioPath === song.path;
                     const isAlreadyOnTimeline = audioCuts.some(a => a.audioPath === song.path);
+                    const isSongMissing = missingMediaPaths.has(song.path);
 
                     return (
                       <div
                         key={song.path || idx}
-                        className={`p-2 rounded-xl border flex flex-col gap-1.5 text-xs transition-all ${isAuditioning
-                          ? 'bg-indigo-950/60 border-indigo-500/70 ring-1 ring-indigo-500/40'
-                          : 'bg-zinc-950/80 border-zinc-800/80 hover:border-indigo-800/60'
-                          }`}
+                        className={`p-2 rounded-xl border flex flex-col gap-1.5 text-xs transition-all ${
+                          isSongMissing
+                            ? 'bg-red-950/70 border-red-500/80 text-red-200'
+                            : isAuditioning
+                            ? 'bg-indigo-950/60 border-indigo-500/70 ring-1 ring-indigo-500/40'
+                            : 'bg-zinc-950/80 border-zinc-800/80 hover:border-indigo-800/60'
+                        }`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 truncate">
@@ -3268,18 +3414,22 @@ export default function VideoStudio({
                             <button
                               type="button"
                               onClick={() => toggleAuditionSong(song.path)}
-                              className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-all ${isAuditioning
-                                ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/50 animate-pulse'
-                                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
-                                }`}
-                              title={isAuditioning ? 'Pausar audición' : 'Escuchar vista previa'}
+                              disabled={isSongMissing}
+                              className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                                isSongMissing
+                                  ? 'bg-red-950/90 text-red-400 border border-red-500/50 cursor-not-allowed opacity-60'
+                                  : isAuditioning
+                                  ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/50 animate-pulse cursor-pointer'
+                                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer'
+                              }`}
+                              title={isSongMissing ? 'Archivo no accesible' : isAuditioning ? 'Pausar audición' : 'Escuchar vista previa'}
                             >
-                              <span className="text-[10px]">{isAuditioning ? '⏸' : '▶'}</span>
+                              <span className="text-[10px]">{isSongMissing ? '⚠️' : isAuditioning ? '⏸' : '▶'}</span>
                             </button>
                             <div className="flex flex-col truncate">
-                              <span className="font-semibold text-zinc-200 truncate">{song.name}</span>
-                              <span className="text-[10px] font-mono text-zinc-500">
-                                {song.duration_formatted || `${Math.round(song.duration_seconds)}s`} • {song.size_mb ? `${song.size_mb}MB` : 'Audio'}
+                              <span className={`font-semibold truncate ${isSongMissing ? 'text-red-200 font-medium' : 'text-zinc-200'}`}>{song.name}</span>
+                              <span className={`text-[10px] font-mono ${isSongMissing ? 'text-red-300/80' : 'text-zinc-500'}`}>
+                                {isSongMissing ? '⚠️ Archivo inaccesible en disco' : `${song.duration_formatted || `${Math.round(song.duration_seconds)}s`} • ${song.size_mb ? `${song.size_mb}MB` : 'Audio'}`}
                               </span>
                             </div>
                           </div>
@@ -3289,7 +3439,11 @@ export default function VideoStudio({
                             <button
                               type="button"
                               onClick={() => handleAddAudioToTimeline(song.path, song.name)}
-                              className="px-2 py-1 rounded bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 text-[10px] font-bold border border-indigo-700/60 cursor-pointer transition-all hover:scale-105"
+                              className={`px-2 py-1 rounded text-[10px] font-bold border transition-all hover:scale-105 cursor-pointer ${
+                                isSongMissing
+                                  ? 'bg-red-900/60 hover:bg-red-800 text-red-200 border-red-600/70'
+                                  : 'bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 border-indigo-700/60'
+                              }`}
                               title="Añadir al final de la pista A1"
                             >
                               + A1
@@ -3297,7 +3451,11 @@ export default function VideoStudio({
                             <button
                               type="button"
                               onClick={() => handleAddAudioToTimeline(song.path, song.name, playheadTime)}
-                              className="px-1.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-indigo-200 text-[10px] border border-zinc-800 cursor-pointer"
+                              className={`px-1.5 py-1 rounded text-[10px] border cursor-pointer ${
+                                isSongMissing
+                                  ? 'bg-red-950 hover:bg-red-900 text-red-300 border-red-800/60'
+                                  : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-indigo-200 border-zinc-800'
+                              }`}
                               title="Añadir en la posición actual del cabezal"
                             >
                               📍
@@ -3648,6 +3806,12 @@ export default function VideoStudio({
                 src={activeVideoSrc}
                 muted={muteOriginalAudio}
                 playsInline
+                onError={() => {
+                  const clipPath = (currentResolvedClip as any)?.activeClipPath || currentResolvedClip?.cut?.clipPath;
+                  if (clipPath) {
+                    setMissingMediaPaths(prev => new Set(prev).add(clipPath));
+                  }
+                }}
                 style={{
                   transform: `scale(${currentResolvedClip?.cut?.zoom || 1}) translate(${currentResolvedClip?.cut?.panX || 0}%, ${currentResolvedClip?.cut?.panY || 0}%)`,
                   transition: isCanvasDraggingVideo ? 'none' : 'transform 0.15s ease-out',
@@ -3668,6 +3832,30 @@ export default function VideoStudio({
                   {lang === 'es' ? 'Arrastra clips o haz clic para importar' : 'Drag clips or click to import'}
                 </p>
                 <span className="text-[10px] text-zinc-500 mt-1">MP4, MOV, WEBM</span>
+              </div>
+            )}
+
+            {/* Overlay de Media Offline en rojo si el clip activo en este segundo es inaccesible */}
+            {currentResolvedClip && (
+              currentResolvedClip.cut.isMissing ||
+              missingMediaPaths.has((currentResolvedClip as any).activeClipPath || currentResolvedClip.cut.clipPath)
+            ) && (
+              <div className="absolute inset-0 z-30 bg-red-950/90 backdrop-blur-xs flex flex-col items-center justify-center p-4 border-2 border-red-500 text-center select-none animate-in fade-in">
+                <div className="w-12 h-12 rounded-full bg-red-900/80 border border-red-400 flex items-center justify-center text-2xl text-red-200 mb-2 shadow-xl shadow-red-950/80 animate-pulse">
+                  ⚠️
+                </div>
+                <div className="text-sm font-extrabold text-red-200 tracking-wider uppercase font-mono">
+                  Media Offline / Recurso Inaccesible
+                </div>
+                <p className="text-xs text-white max-w-sm mt-1 truncate font-semibold">
+                  {currentResolvedClip.cut.name}
+                </p>
+                <span className="text-[10px] text-red-300 font-mono mt-0.5 max-w-xs truncate">
+                  {(currentResolvedClip as any).activeClipPath || currentResolvedClip.cut.clipPath}
+                </span>
+                <span className="mt-2 text-[10px] px-2 py-0.5 rounded bg-red-900/70 border border-red-400/50 text-red-100 font-medium">
+                  {lang === 'es' ? 'Archivo no encontrado en el disco' : 'File not found on disk'}
+                </span>
               </div>
             )}
 
@@ -3902,6 +4090,12 @@ export default function VideoStudio({
               if (audioCuts.length > 0) {
                 const activeCut = audioCuts.find(a => newTime >= a.startTime && newTime < (a.startTime + a.duration));
                 if (activeCut) {
+                  const expectedSrc = getMediaUrl(activeCut.audioPath);
+                  const currentSrc = musicPlayerRef.current.currentSrc || musicPlayerRef.current.src || '';
+                  if (!currentSrc.includes(encodeURIComponent(activeCut.audioPath)) && !currentSrc.endsWith(activeCut.audioPath)) {
+                    musicPlayerRef.current.src = expectedSrc;
+                    musicPlayerRef.current.load();
+                  }
                   const offset = Math.max(0, newTime - activeCut.startTime);
                   musicPlayerRef.current.currentTime = offset;
                 } else {
@@ -3930,6 +4124,7 @@ export default function VideoStudio({
             if (id) setActiveInspectorTab('clip');
           }}
           onSplitAtPlayhead={handleSplitClipAtPlayhead}
+          missingCutIds={missingCutIds}
           overlays={overlays}
           onUpdateOverlays={setOverlays}
           selectedOverlayId={selectedOverlayId}
@@ -3944,6 +4139,7 @@ export default function VideoStudio({
             setSelectedAudioCutId(id);
             if (id) setActiveInspectorTab('audio');
           }}
+          missingAudioCutIds={missingAudioCutIds}
           musicName={musicAudioPath ? musicAudioPath.split(/[/\\]/).pop() : undefined}
           musicVolume={musicVolume}
           onChangeMusicVolume={setMusicVolume}

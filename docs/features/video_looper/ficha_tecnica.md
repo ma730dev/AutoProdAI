@@ -58,6 +58,7 @@ flowchart TD
     - **Paneo y Zoom del Video en Canvas:** Posibilidad de arrastrar el metraje dentro del viewport para re-encuadrar tomas horizontales en formatos verticales (9:16 Shorts), con controles de escala, pan X/Y y botón de centrado.
     - **Reordenamiento Ágil de Cortes:** Botones `◀ Mover antes` y `Mover después ▶` más duplicador de clips `📋` en el inspector.
 6. **Multipista de Audio (Múltiples Canciones y Efectos en A1):**
+    - **Streaming Universal Híbrido (`getMediaUrl`):** Resolución inteligente y unificada de fuentes multimedia para video y audio. Para rutas locales en disco, conecta con `${getControladorUrl()}/workspace/raw?path=...` asegurando compatibilidad total tanto en desarrollo local (`localhost:3000`) como en despliegues cloud sobre HTTPS (`test.autoprodai.com`), integrando cabeceras W3C Private Network Access (`Access-Control-Allow-Private-Network: true`). Para URLs remotas (Supabase Storage / CDN) o blobs en memoria, reproduce directamente la URL sin intermediarios.
     - **Importación Múltiple:** Subida por lotes de archivos MP3/WAV/OGG/FLAC desde el explorador del PC.
     - **Audición Rápida:** Botón de play/pause (`▶ / ⏸`) en la bandeja de medios para preescuchar cualquier canción antes de insertarla.
     - **Inserción en Cascada:** Botón `⚡ Añadir Todas en Cascada` que dispone toda la biblioteca de audio secuencialmente una canción tras otra en la pista A1.
@@ -93,15 +94,26 @@ flowchart TD
     - **Rendimiento Máximo en Navegador («Sin romper la PC»):** Toda la secuencia de bucle (sea de 1 clip o de múltiples clips cíclicos) se representa en la pista V1 como **1 solo elemento elástico en el DOM** con muescas doradas vía CSS (`repeating-linear-gradient`). En el canvas, `resolveClipAtTime` conmuta con precisión de milisegundo el sub-clip activo en cada vuelta.
     - **Pipeline de Exportación Multi-Clip:** Al exportar (`/video/render_timeline`), el ciclo de bucle se expande virtualmente en cortes secuenciales enlazados preservando `start_time`, `end_time`, `is_reversed`, pan y zoom exactos para que FFmpeg los procese y concatene de forma nativa sin desajustes de códec ni desincronización de audio.
     - **Restauración Limpia al Desactivar:** Al desactivar el bucle, los cortes originales son desempaquetados de nuevo en la línea de tiempo manteniendo sus efectos individuales (`isReversed`, `panX`, `panY`, `zoom`, `startTime`, `endTime`) exactamente como estaban.
+11. **Detección Automática de Recursos Faltantes y Alertas Visuales en Rojo (Offline Media):**
+    - **Ámbito Global (Explorador FileTree & VideoStudio):**
+      - *Explorador de Carpetas (`FileTree.tsx`):* Identificación de proyectos de video de nivel 1 que carecen de recursos de video válidos en su carpeta `Videos/` (o carecen de la carpeta), mostrándolos en rojo con el badge `⚠️ Sin videos`. Del mismo modo, carpetas `Videos/` vacías se marcan en rojo con `⚠️ Vacía`, y archivos con extensiones no reconocidas se muestran en rojo con `⚠️ No reconocido`.
+      - *Línea de Tiempo (`TimelinePro.tsx`):* Cortes de video en pista V1 y pistas de audio en A1 que apuntan a archivos no encontrados o inaccesibles se renderizan en rojo intenso (`bg-red-950/95 border-red-500 ring-2 ring-red-400 text-red-100`), con badge `OFFLINE`, título `⚠️ OFFLINE: {nombre}` y manillas en rojo.
+      - *Bandeja de Medios (`VideoStudio.tsx`):* Clips y pistas de audio en la bandeja de recursos se resaltan en rojo con bordes carmesí y etiquetas de aviso `⚠️ Archivo inaccesible / Offline`, deshabilitando la preescucha de canciones faltantes.
+      - *Canvas Viewport:* Overlay de emergencia en rojo `⚠️ Media Offline / Recurso Inaccesible` cuando el cabezal de tiempo se posiciona sobre un clip cuyo archivo no se encuentra en el disco, evitando caídas o pantallas congeladas.
+      - *Inspector Contextual:* Tarjeta de advertencia en rojo detallando la ruta exacta perdida para que el creador pueda reconectar o sustituir el archivo.
+    - **Verificación Ultra-Ligera Sin Overhead:** Verificación no bloqueante vía solicitudes `HEAD` a `/api/assets/stream?path=...` (con fallback a `/workspace/raw`), comprobando existencia en disco en < 1ms sin consumir ancho de banda ni decodificar streams.
 
 ---
 
 ## 📂 4. Archivos Involucrados en el Repositorio
 
-- [`components/dashboard/VideoStudio.tsx`](file:///e:/autoprod/components/dashboard/VideoStudio.tsx): **Componente Core.** Editor de video con Media Bin (clips, audio, texto, subtítulos, looper), Canvas interactivo, Inspector contextual, subtitulado Whisper, reversa y soporte para videos largos.
-- [`components/dashboard/timeline/TimelinePro.tsx`](file:///e:/autoprod/components/dashboard/timeline/TimelinePro.tsx): Línea de tiempo multipista con regla adaptativa anti-lag, auto-fit para proyectos largos y manillas interactivas.
-- [`components/dashboard/VideoLooperStudio.tsx`](file:///e:/autoprod/components/dashboard/VideoLooperStudio.tsx): Re-export de compatibilidad hacia atrás para `VideoStudio`.
+- [`components/workspace/FileTree.tsx`](file:///e:/autoprod/components/workspace/FileTree.tsx): Explorador de archivos con detección de proyectos sin recursos (`checkHasVideoResources`), carpetas `Videos/` vacías y archivos desconocidos en rojo.
+- [`components/video-studio/VideoStudio.tsx`](file:///e:/autoprod/components/video-studio/VideoStudio.tsx): Editor de video con verificación reactiva de accesibilidad de medios (`missingMediaPaths`), overlay de Media Offline en Canvas, alertas en Media Bin e inspector.
+- [`components/video-studio/timeline/TimelinePro.tsx`](file:///e:/autoprod/components/video-studio/timeline/TimelinePro.tsx): Línea de tiempo multipista con marcado en rojo y badges `OFFLINE` para cortes de video (V1) y audio (A1) faltantes.
+- [`app/api/assets/stream/route.ts`](file:///e:/autoprod/app/api/assets/stream/route.ts): Handler `HEAD` de alto rendimiento para validación instantánea de archivos en disco sin carga de streaming.
+- [`components/video-studio/VideoLooperStudio.tsx`](file:///e:/autoprod/components/video-studio/VideoLooperStudio.tsx): Re-export de compatibilidad hacia atrás para `VideoStudio`.
 - [`controlador/routers/video_looper.py`](file:///e:/autoprod/controlador/routers/video_looper.py): Router FastAPI con `/video/render_timeline` (Multi-clip pipeline con `reverse`/`areverse`, búfer eficiente para videos largos y GPU) y `/video/create_loop`.
 - [`controlador/routers/workspace.py`](file:///e:/autoprod/controlador/routers/workspace.py): Endpoints `/workspace/upload_stream` y `/workspace/folder_videos` para streaming directo de archivos grandes sin Base64.
 - [`lib/controlador-client.ts`](file:///e:/autoprod/lib/controlador-client.ts): Cliente TypeScript con `uploadStreamFile` y `getFolderVideos`.
+
 

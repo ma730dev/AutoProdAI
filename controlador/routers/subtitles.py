@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from hardware import governor
+from hardware import governor, set_background_priority
 from routers.video_looper import (
     default_workspace_path,
     get_temp_render_dir,
@@ -148,24 +148,31 @@ def call_openai_whisper(audio_path: Path, api_key: str, language: Optional[str] 
         resp_data = response.read().decode("utf-8")
         return json.loads(resp_data)
 
-def extract_optimized_audio(source_file: Path, temp_dir: Path, target_id: str) -> Path:
+def extract_optimized_audio(source_file: Path, temp_dir: Path, target_id: str, is_cloud_api: bool = False) -> Path:
     """
-    Extrae o comprime el audio a 16kHz mono 64kbps MP3 usando FFmpeg
-    para que pese muy pocos megabytes y no supere el límite de 25MB de OpenAI.
+    Extrae el audio de video o normaliza a 16kHz mono WAV aplicando filtrado vocal:
+    - highpass=f=120: elimina ruidos de bombo/sub-bajos que confunden la matriz acústica.
+    - lowpass=f=7500: reduce platillos estridentes y siseos de sintetizadores.
+    - dynaudnorm: normaliza la voz para que partes suaves y coros tengan volumen parejo.
     """
     ffmpeg = get_ffmpeg_path()
-    out_audio = temp_dir / f"audio_opt_{target_id}_{int(time.time())}.mp3"
-    
+    if is_cloud_api:
+        out_audio = temp_dir / f"audio_opt_{target_id}_{int(time.time())}.mp3"
+        codec_args = ["-acodec", "libmp3lame", "-b:a", "96k"]
+    else:
+        out_audio = temp_dir / f"audio_opt_{target_id}_{int(time.time())}.wav"
+        codec_args = ["-acodec", "pcm_s16le"]
+
     cmd = [
         str(ffmpeg),
         "-nostdin",
         "-y",
         "-i", str(source_file),
         "-vn",
-        "-acodec", "libmp3lame",
+        "-af", "highpass=f=120,lowpass=f=7500,dynaudnorm=f=150:g=15",
+        *codec_args,
         "-ar", "16000",
         "-ac", "1",
-        "-b:a", "64k",
         str(out_audio)
     ]
     try:
@@ -179,11 +186,11 @@ def extract_optimized_audio(source_file: Path, temp_dir: Path, target_id: str) -
     return source_file
 
 # ──────────────────────────────────────────────
-# Modelos de Datos
+# Modelos de Datos & Ciclo de Vida en RAM
 # ──────────────────────────────────────────────
 _LOADED_WHISPER_MODELS: Dict[str, Any] = {}
 
-def get_or_create_faster_whisper_model(model_size: str = "base", device: str = "cpu", compute_type: str = "int8", cpu_threads: int = 4):
+def get_or_create_faster_whisper_model(model_size: str = "small", device: str = "cpu", compute_type: str = "int8", cpu_threads: int = 2):
     """Carga y cachea en memoria el modelo de Faster-Whisper."""
     key = f"{model_size}_{device}_{compute_type}_{cpu_threads}"
     if key not in _LOADED_WHISPER_MODELS:
@@ -196,16 +203,26 @@ def get_or_create_faster_whisper_model(model_size: str = "base", device: str = "
         )
     return _LOADED_WHISPER_MODELS[key]
 
+def release_whisper_model():
+    """Libera la memoria RAM ocupada por el modelo de Whisper al finalizar la tarea."""
+    global _LOADED_WHISPER_MODELS
+    try:
+        _LOADED_WHISPER_MODELS.clear()
+        import gc
+        gc.collect()
+    except Exception:
+        pass
+
 def transcribe_faster_whisper(
     audio_path: Path,
     language: Optional[str] = "es",
     device: str = "cpu",
-    safe_threads: int = 4,
-    model_size: str = "base"
+    safe_threads: int = 2,
+    model_size: str = "small"
 ) -> Dict[str, Any]:
     """
     Transcribe audio usando faster-whisper (CTranslate2) 100% en local.
-    Extrae marcas de tiempo a nivel de palabra para subtítulos estilo CapCut y usa Silero VAD para filtrar silencios.
+    Extrae marcas de tiempo a nivel de palabra para subtítulos estilo CapCut y usa Silero VAD calibrado.
     """
     compute_type = "float16" if device == "cuda" else "int8"
     try:
@@ -219,12 +236,29 @@ def transcribe_faster_whisper(
 
     lang_param = language.lower() if (language and language.lower() not in ["auto", ""]) else None
 
+    # Parámetros de VAD tolerantes para no recortar voces cantadas sobre bases musicales
+    vad_params = dict(
+        threshold=0.25,              # Umbral sensible para voz sobre instrumentos
+        min_silence_duration_ms=800, # Silencios más largos para no cortar compases líricos
+        speech_pad_ms=500            # Colchón de 500ms para preservar sílabas iniciales y finales
+    )
+
+    initial_prompt = (
+        "Letra de canción en español con rimas, estrofas y versos bien estructurados y puntuados."
+        if lang_param == "es"
+        else "Song lyrics with clear verses and punctuation."
+    )
+
     segments_generator, info = model.transcribe(
         str(audio_path),
         language=lang_param,
         word_timestamps=True,
         vad_filter=True,
-        vad_parameters=dict(min_silence_duration_ms=400)
+        vad_parameters=vad_params,
+        condition_on_previous_text=False,
+        initial_prompt=initial_prompt,
+        no_speech_threshold=0.35,
+        beam_size=3  # Equilibrio óptimo entre precisión y velocidad sin sobrecargar CPU
     )
 
     full_text_parts = []
@@ -282,6 +316,7 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
     """
     Worker en segundo plano para procesar subtítulos respetando el HardwareGovernor.
     """
+    set_background_priority()
     temp_dir = get_temp_render_dir()
     api_key = get_openai_api_key()
 
@@ -333,7 +368,7 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
 
             # 1. Extraer / optimizar audio
             SUB_JOBS[job_id]["message"] = f"Optimizando audio para {file_item.name}..."
-            opt_audio = extract_optimized_audio(file_item, temp_dir, f"{job_id}_{idx}")
+            opt_audio = extract_optimized_audio(file_item, temp_dir, f"{job_id}_{idx}", is_cloud_api=(req.engine == "openai_api"))
 
             # 2. Transcribir según el motor
             transcription_data = None
@@ -343,19 +378,21 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
                 SUB_JOBS[job_id]["message"] = f"Transcribiendo con OpenAI Whisper API (Cloud): {file_item.name}..."
                 transcription_data = call_openai_whisper(opt_audio, api_key, req.language)
             else:
-                # Motor local (faster-whisper nativo con aceleración por CPU/GPU)
-                specs = governor.get_hardware_specs()
-                safe_threads = specs["safe_threads"]
-                device = "cuda" if (req.engine == "local_gpu" and specs["has_cuda"]) else "cpu"
+                # Motor local con perfil adaptativo inteligente según RAM y CPU del cliente
+                opt_config = governor.get_optimal_whisper_config()
+                device = "cuda" if (req.engine == "local_gpu" and opt_config["device"] == "cuda") else "cpu"
+                safe_threads = opt_config["threads"]
+                chosen_model = opt_config["model_size"]
+                profile_desc = opt_config["description"]
                 
                 try:
-                    SUB_JOBS[job_id]["message"] = f"Transcribiendo con Faster-Whisper ({device.upper()} - {safe_threads} hilos): {file_item.name}..."
+                    SUB_JOBS[job_id]["message"] = f"Transcribiendo ({chosen_model.upper()} en {device.upper()} con {safe_threads} hilo(s) - {profile_desc}): {file_item.name}..."
                     transcription_data = transcribe_faster_whisper(
                         opt_audio,
                         language=req.language,
                         device=device,
                         safe_threads=safe_threads,
-                        model_size="base"
+                        model_size=chosen_model
                     )
                 except ImportError:
                     # Si faster-whisper no está instalado, intentar CLI de whisper clásico
@@ -468,7 +505,8 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
         SUB_JOBS[job_id]["message"] = f"Error generando subtítulos: {str(e)}"
 
     finally:
-        # Liberar slot del HardwareGovernor
+        # Liberar memoria RAM del modelo de Whisper y slot del HardwareGovernor
+        release_whisper_model()
         governor.release_job_slot(job_id)
 
 # ──────────────────────────────────────────────

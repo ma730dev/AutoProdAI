@@ -40,6 +40,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Ruta de archivo no especificada' }, { status: 400 });
     }
 
+    // Si es una URL externa (ej. CDN o Supabase Storage), redirigir directamente
+    if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
+      return NextResponse.redirect(rawPath);
+    }
+
     // Normalizar la ruta en Windows o POSIX
     const filePath = path.normalize(rawPath);
 
@@ -125,3 +130,36 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message || 'Error transmitiendo archivo local' }, { status: 500 });
   }
 }
+
+export async function HEAD(req: NextRequest) {
+  try {
+    const rawPath = req.nextUrl.searchParams.get('path');
+    if (!rawPath) {
+      return new NextResponse(null, { status: 400 });
+    }
+
+    // Si es una URL externa, redirigir
+    if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
+      return NextResponse.redirect(rawPath);
+    }
+
+    const filePath = path.normalize(rawPath);
+    if (!fs.existsSync(filePath)) {
+      return new NextResponse(null, { status: 404 });
+    }
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) {
+      return new NextResponse(null, { status: 400 });
+    }
+    return new NextResponse(null, {
+      status: 200,
+      headers: {
+        'Content-Length': stat.size.toString(),
+        'Accept-Ranges': 'bytes',
+      },
+    });
+  } catch {
+    return new NextResponse(null, { status: 500 });
+  }
+}
+

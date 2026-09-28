@@ -39,6 +39,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_private_network_access_header(request, call_next):
+    """Permite el acceso a la red privada (PNA) desde dominios públicos HTTPS como test.autoprodai.com"""
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
+
 
 # Registrar Routers
 app.include_router(workspace.router)

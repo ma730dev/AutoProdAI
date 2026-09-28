@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Language } from '@/app/translations';
-import { ControladorClient } from '@/lib/controlador-client';
+import { ControladorClient, getMediaUrl } from '@/lib/controlador-client';
 import { toast } from 'sonner';
 
 export interface AssetRecord {
@@ -296,7 +296,7 @@ export default function AssetLibraryView({
   const getAssetStreamUrl = (asset?: AssetRecord | null) => {
     if (!asset) return '';
     if (asset.storageUrl) return asset.storageUrl;
-    if (asset.localPath) return `/api/assets/stream?path=${encodeURIComponent(asset.localPath)}`;
+    if (asset.localPath) return getMediaUrl(asset.localPath);
     return '';
   };
 

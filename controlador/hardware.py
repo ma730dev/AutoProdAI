@@ -20,6 +20,24 @@ class MEMORYSTATUSEX(ctypes.Structure):
         ('sullAvailExtendedVirtual', ctypes.c_ulonglong),
     ]
 
+def set_background_priority():
+    """
+    Configura la prioridad del proceso a 'Below Normal'.
+    Esto asegura que Windows/macOS siempre den 100% de prioridad a la interfaz gráfica,
+    el navegador y el cursor del usuario, evitando cualquier congelamiento o lag.
+    """
+    try:
+        if sys.platform == "win32":
+            BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+            ctypes.windll.kernel32.SetPriorityClass(
+                ctypes.windll.kernel32.GetCurrentProcess(),
+                BELOW_NORMAL_PRIORITY_CLASS
+            )
+        else:
+            os.nice(10)
+    except Exception:
+        pass
+
 class HardwareGovernor:
     """
     Gestor de Recursos y Concurrencia de AutoProd.
@@ -45,6 +63,7 @@ class HardwareGovernor:
         self.queue: List[Dict[str, Any]] = []
         self._cached_specs = None
         self._last_specs_time = 0
+        set_background_priority()
 
     def get_hardware_specs(self) -> Dict[str, Any]:
         """Obtiene las especificaciones de hardware en tiempo real."""
@@ -52,10 +71,18 @@ class HardwareGovernor:
         if self._cached_specs and (now - self._last_specs_time < 10):
             return self._cached_specs
 
-        # 1. CPU
+        # 1. CPU & Gobernanza de Concurrencia Silenciosa
         cpu_cores = os.cpu_count() or 4
-        # Reservar al menos 2 núcleos para la UI y el sistema operativo
-        safe_threads = max(1, cpu_cores - 2)
+        # Para CTranslate2/Whisper, 2 a 4 hilos es el punto óptimo de ancho de banda de memoria.
+        # Más de 4 hilos no acelera la inferencia pero satura la CPU y eleva temperaturas.
+        if cpu_cores <= 2:
+            safe_threads = 1
+        elif cpu_cores <= 4:
+            safe_threads = 2
+        elif cpu_cores <= 8:
+            safe_threads = 3
+        else:
+            safe_threads = 4  # Con 4 hilos la CPU se mantiene fresca, silenciosa y la UI no pierde fluidez
 
         # 2. Memoria RAM
         total_ram_gb = 8.0
@@ -166,10 +193,16 @@ class HardwareGovernor:
         gpu_factor = 0.15 if specs["has_cuda"] else 0.30
         gpu_est_sec = max(5.0, total_audio_seconds * gpu_factor)
 
-        # CPU Local: equilibrada con límite de núcleos para no congelar la máquina
-        cpu_cores = specs["cpu_cores"]
-        cpu_factor = max(0.5, 1.3 - (min(cpu_cores, 12) * 0.06))
-        cpu_est_sec = max(10.0, total_audio_seconds * cpu_factor)
+        opt_config = self.get_optimal_whisper_config()
+        if opt_config["profile"] == "low_resource_safe":
+            cpu_factor = 0.8
+            cpu_est_sec = max(15.0, total_audio_seconds * cpu_factor)
+            cpu_impact_desc = f"Ultraligero defensivo (1 núcleo, ~450MB RAM para no saturar 4GB)"
+        else:
+            cpu_cores = specs["cpu_cores"]
+            cpu_factor = max(0.5, 1.3 - (min(cpu_cores, 12) * 0.06))
+            cpu_est_sec = max(10.0, total_audio_seconds * cpu_factor)
+            cpu_impact_desc = f"Protegido (~{specs['safe_threads']} de {specs['cpu_cores']} núcleos, ~1.1GB RAM)"
 
         def fmt(sec: float) -> str:
             m = int(sec // 60)
@@ -183,6 +216,7 @@ class HardwareGovernor:
         return {
             "media_duration_seconds": round(total_audio_seconds, 2),
             "media_duration_formatted": fmt(total_audio_seconds),
+            "optimal_profile": opt_config,
             "engine_estimates": {
                 "openai_api": {
                     "estimated_seconds": round(api_est_sec, 1),
@@ -201,7 +235,7 @@ class HardwareGovernor:
                 "local_cpu": {
                     "estimated_seconds": round(cpu_est_sec, 1),
                     "formatted": fmt(cpu_est_sec),
-                    "cpu_impact": f"Moderado (~{specs['safe_threads']} de {specs['cpu_cores']} núcleos)",
+                    "cpu_impact": cpu_impact_desc,
                     "speed_multiplier": "Velocidad estándar protegida",
                     "supported": True
                 }
@@ -236,6 +270,54 @@ class HardwareGovernor:
                     "meta": meta
                 })
                 return False
+
+    def get_optimal_whisper_config(self) -> Dict[str, Any]:
+        """
+        Determina de forma adaptativa el modelo, cantidad de hilos y tipo de cómputo
+        según el hardware exacto del cliente (especialmente para laptops de 4GB RAM y 2-4 núcleos),
+        garantizando que la máquina no se bloquee ni congele mientras procesa.
+        """
+        specs = self.get_hardware_specs()
+        avail_ram = specs.get("avail_ram_gb", 4.0)
+        total_ram = specs.get("total_ram_gb", 8.0)
+        cpu_cores = specs.get("cpu_cores", 4)
+        has_cuda = specs.get("has_cuda", False)
+
+        # 1. Si el cliente tiene GPU NVIDIA con CUDA disponible
+        if has_cuda:
+            return {
+                "device": "cuda",
+                "model_size": "small",
+                "compute_type": "float16",
+                "threads": 2,
+                "profile": "gpu_accelerated",
+                "description": "GPU NVIDIA CUDA activa: alta velocidad y consumo casi nulo de CPU."
+            }
+
+        # 2. Perfil PC Modesto / Laptop de 4 GB RAM (o menos de 1.8 GB libres en RAM)
+        # Modo 'Defensa Crítica': Carga 'base' con INT8 (solo ~450 MB de RAM y 1 hilo)
+        # Esto previene absolutamente que Windows recurra al swap de disco (paging) y congele el PC.
+        if total_ram <= 4.5 or avail_ram < 1.8:
+            return {
+                "device": "cpu",
+                "model_size": "base",
+                "compute_type": "int8",
+                "threads": 1,
+                "profile": "low_resource_safe",
+                "description": "Perfil defensivo de 4GB RAM: 1 hilo en CPU y huella de RAM ultrabaja (~450MB)."
+            }
+
+        # 3. PC Estándar (8 GB a 16 GB RAM con CPU estándar)
+        # Modo 'Equilibrado': Carga 'small' con INT8 (~1.1 GB RAM, 2 a 3 hilos)
+        threads = 2 if cpu_cores <= 4 else (3 if cpu_cores <= 8 else 4)
+        return {
+            "device": "cpu",
+            "model_size": "small",
+            "compute_type": "int8",
+            "threads": threads,
+            "profile": "balanced_quality",
+            "description": f"Perfil equilibrado: modelo small con {threads} hilos (~1.1GB RAM)."
+        }
 
     def release_job_slot(self, job_id: str) -> Optional[Dict[str, Any]]:
         """

@@ -6,6 +6,21 @@ export function getControladorUrl() {
   return 'http://127.0.0.1:8000';
 };
 
+/**
+ * Resuelve la URL de reproducción para cualquier archivo multimedia (video, audio, imagen).
+ * - Si es una URL remota (http/https/blob/data), la retorna directamente.
+ * - Si es una ruta local en disco, la dirige al endpoint /workspace/raw del motor local.
+ */
+export function getMediaUrl(pathOrUrl?: string | null): string {
+  if (!pathOrUrl) return '';
+  const trimmed = pathOrUrl.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('blob:') || trimmed.startsWith('data:')) {
+    return trimmed;
+  }
+  return `${getControladorUrl()}/workspace/raw?path=${encodeURIComponent(trimmed)}`;
+}
+
 export interface TTSVoice {
   id: string;
   name: string;
