@@ -17,6 +17,8 @@ export interface SubtitlesPanelContentProps {
   subtitleEngine: string;
   setSubtitleEngine: (v: string) => void;
   isGeneratingSubtitles: boolean;
+  subtitleProgress?: number;
+  subtitleProgressMsg?: string;
   handleGenerateSubtitles: () => void;
   subtitleFileInputRef: React.RefObject<HTMLInputElement>;
   subtitlesToSrt: (subs: SubtitleItem[]) => string;
@@ -34,6 +36,8 @@ export default function SubtitlesPanelContent({
   subtitleEngine,
   setSubtitleEngine,
   isGeneratingSubtitles,
+  subtitleProgress = 0,
+  subtitleProgressMsg = '',
   handleGenerateSubtitles,
   subtitleFileInputRef,
   subtitlesToSrt,
@@ -218,6 +222,26 @@ export default function SubtitlesPanelContent({
             </button>
           )}
         </div>
+
+        {/* ── Barra de progreso en tiempo real ──────────────────────────── */}
+        {isGeneratingSubtitles && (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-emerald-400 font-semibold truncate pr-2">
+                {subtitleProgressMsg || (lang === 'es' ? 'Procesando...' : 'Processing...')}
+              </span>
+              <span className="text-[10px] font-mono font-bold text-emerald-300 shrink-0">
+                {subtitleProgress}%
+              </span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                style={{ width: `${subtitleProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Header de la lista + búsqueda ───────────────────────────────── */}

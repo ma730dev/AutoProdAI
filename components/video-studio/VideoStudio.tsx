@@ -75,6 +75,8 @@ export default function VideoStudio({
   // ── PISTA S1: SUBTÍTULOS SINCRONIZADOS & IA (WHISPER) ──
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([]);
   const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState<boolean>(false);
+  const [subtitleProgress, setSubtitleProgress] = useState<number>(0);
+  const [subtitleProgressMsg, setSubtitleProgressMsg] = useState<string>('');
   const [subtitleLanguage, setSubtitleLanguage] = useState<string>('es');
   const [subtitleEngine, setSubtitleEngine] = useState<string>('local_cpu');
   const subtitleFileInputRef = useRef<HTMLInputElement>(null);
@@ -978,110 +980,127 @@ export default function VideoStudio({
   };
 
   const handleGenerateSubtitles = async () => {
-    let sourcePath = '';
-    // Priorizar pistas de audio A1 (canción/voz) o música de fondo sobre los clips de video V1
-    if (audioCuts.length > 0) {
-      sourcePath = audioCuts[0].audioPath;
-    } else if (musicAudioPath) {
-      sourcePath = musicAudioPath;
-    } else if (timelineCuts.length > 0) {
-      sourcePath = timelineCuts[0].clipPath;
-    } else if (projectAudioList.length > 0) {
-      sourcePath = projectAudioList[0].path;
-    } else if (projectClips.length > 0) {
-      sourcePath = projectClips[0].path;
-    }
+    // Recopilar TODAS las pistas de audio A1 en orden cronol\u00f3gico
+    const allAudioCuts = [...audioCuts].sort((a, b) => a.startTime - b.startTime);
 
-    if (!sourcePath) {
-      toast.error(lang === 'es' ? 'Añade un video o audio al proyecto para subtitular' : 'Add a video or audio to generate subtitles');
-      return;
+    // Fallback si no hay pistas A1
+    if (allAudioCuts.length === 0) {
+      let fallbackPath = '';
+      if (musicAudioPath) fallbackPath = musicAudioPath;
+      else if (timelineCuts.length > 0) fallbackPath = timelineCuts[0].clipPath;
+      else if (projectAudioList.length > 0) fallbackPath = projectAudioList[0].path;
+      else if (projectClips.length > 0) fallbackPath = projectClips[0].path;
+
+      if (!fallbackPath) {
+        toast.error(lang === 'es' ? 'A\u00f1ade un video o audio al proyecto para subtitular' : 'Add a video or audio to generate subtitles');
+        return;
+      }
+      allAudioCuts.push({ audioPath: fallbackPath, startTime: 0 } as any);
     }
 
     setIsGeneratingSubtitles(true);
-    const toastId = toast.loading('GENERANDO SUBTÍTULOS 0%');
+    setSubtitleProgress(0);
+    setSubtitleProgressMsg(lang === 'es' ? 'Iniciando...' : 'Starting...');
+    const toastId = toast.loading('GENERANDO SUBT\u00cdTULOS 0%');
 
-    try {
-      const res = await ControladorClient.generateSubtitles({
-        targetType: 'video',
-        path: sourcePath,
-        engine: subtitleEngine,
-        language: subtitleLanguage,
-        formats: ['.srt', '.json'],
-        burnToVideo: false,
-      });
-
-      const jobId = res.job_id;
-      let attempts = 0;
-      const interval = setInterval(async () => {
-        attempts++;
-        try {
-          const status = await ControladorClient.getSubtitlesJobStatus(jobId);
-          // Actualizar toast con el porcentaje real del job
-          if (status.status === 'processing' || status.status === 'pending') {
-            const pct = status.progress ?? 0;
-            toast.loading(`GENERANDO SUBTÍTULOS ${pct}%`, { id: toastId });
-          }
-          if (status.status === 'completed') {
-            clearInterval(interval);
-            setIsGeneratingSubtitles(false);
-            if (status.results && status.results.length > 0) {
-              const srtPath = status.results[0].srt_path;
+    /** Espera hasta que un job termine y devuelve el SRT parseado (tiempo base 0). */
+    const waitForJob = (jobId: string, label: string): Promise<SubtitleItem[]> =>
+      new Promise((resolve, reject) => {
+        let attempts = 0;
+        const iv = setInterval(async () => {
+          attempts++;
+          try {
+            const s = await ControladorClient.getSubtitlesJobStatus(jobId);
+            if (s.status === 'processing' || s.status === 'pending' || s.status === 'queued') {
+              const pct = s.progress ?? 0;
+              setSubtitleProgress(pct);
+              setSubtitleProgressMsg(s.message || label);
+              toast.loading(`GENERANDO SUBT\u00cdTULOS ${pct}% \u2014 ${label}`, { id: toastId });
+            }
+            if (s.status === 'completed') {
+              clearInterval(iv);
+              if (!s.results?.length) { resolve([]); return; }
+              const srtPath = s.results[0].srt_path;
               let srtContent = '';
               try {
-                // Intentar leer por /workspace/raw primero (soporta cualquier formato y streaming directo)
-                const rawRes = await fetch(`${getControladorUrl()}/workspace/raw?path=${encodeURIComponent(srtPath)}`);
-                if (rawRes.ok) {
-                  srtContent = await rawRes.text();
-                } else {
-                  srtContent = await ControladorClient.readFile(srtPath);
-                }
+                const r = await fetch(`${getControladorUrl()}/workspace/raw?path=${encodeURIComponent(srtPath)}`);
+                srtContent = r.ok ? await r.text() : await ControladorClient.readFile(srtPath);
               } catch {
-                try {
-                  srtContent = await ControladorClient.readFile(srtPath);
-                } catch {
-                  const preview = await ControladorClient.previewSubtitleFile(srtPath);
-                  srtContent = preview.content;
-                }
+                try { srtContent = await ControladorClient.readFile(srtPath); }
+                catch { const p = await ControladorClient.previewSubtitleFile(srtPath); srtContent = p.content; }
               }
-              // Compensar el offset de posición del audio en la timeline:
-              // Whisper transcribe desde el seg 0 del archivo, pero si el audio
-              // está colocado en el segundo N de la pista A1, los subtítulos deben
-              // desplazarse ese mismo offset para quedar sincronizados.
-              const audioOffset = audioCuts.length > 0 ? audioCuts[0].startTime : 0;
-              const rawParsed = parseSrtToSubtitles(srtContent);
-              const parsed = audioOffset > 0
-                ? rawParsed.map(sub => ({
-                    ...sub,
-                    start: Number((sub.start + audioOffset).toFixed(2)),
-                    end:   Number((sub.end   + audioOffset).toFixed(2)),
-                  }))
-                : rawParsed;
-              setSubtitles(parsed);
-              toast.success(
-                lang === 'es'
-                  ? `¡${parsed.length} subtítulos generados y colocados en la pista S1!`
-                  : `Generated ${parsed.length} subtitles on track S1!`,
-                { id: toastId }
-              );
-            } else {
-              toast.info('Transcripción completada sin segmentos', { id: toastId });
+              resolve(parseSrtToSubtitles(srtContent));
+            } else if (s.status === 'error') {
+              clearInterval(iv);
+              reject(new Error(s.error || 'Error en transcripci\u00f3n'));
+            } else if (attempts > 240) {
+              clearInterval(iv);
+              reject(new Error('Tiempo de espera agotado'));
             }
-          } else if (status.status === 'error') {
-            clearInterval(interval);
-            setIsGeneratingSubtitles(false);
-            toast.error(status.error || 'Error en transcripción', { id: toastId });
-          }
-        } catch {
-          if (attempts > 60) {
-            clearInterval(interval);
-            setIsGeneratingSubtitles(false);
-            toast.error('Tiempo de espera agotado al transcribir', { id: toastId });
-          }
-        }
-      }, 1500);
+          } catch (e) { if (attempts > 60) { clearInterval(iv); reject(e); } }
+        }, 1500);
+      });
+
+    try {
+      // PASO 1: transcribir cada archivo \u00danico 1 sola vez
+      // (si el mismo .mp3 est\u00e1 5 veces en la timeline, se transcribe 1 vez)
+      const uniquePaths = [...new Set(allAudioCuts.map(c => c.audioPath))];
+      const baseSubsByPath = new Map<string, SubtitleItem[]>();
+      const total = uniquePaths.length;
+
+      for (let i = 0; i < uniquePaths.length; i++) {
+        const path = uniquePaths[i];
+        const name = path.split(/[/\\]/).pop() ?? path;
+        const label = total > 1 ? `${name} (${i + 1}/${total})` : name;
+
+        setSubtitleProgressMsg(`Transcribiendo: ${label}`);
+        toast.loading(`GENERANDO SUBT\u00cdTULOS \u2014 ${label}`, { id: toastId });
+
+        const res = await ControladorClient.generateSubtitles({
+          targetType: 'video',
+          path,
+          engine: subtitleEngine,
+          language: subtitleLanguage,
+          formats: ['.srt', '.json'],
+          burnToVideo: false,
+        });
+
+        const baseSubs = await waitForJob(res.job_id, label);
+        baseSubsByPath.set(path, baseSubs);
+        setSubtitleProgress(Math.round(((i + 1) / total) * 90));
+      }
+
+      // PASO 2: por cada INSTANCIA en la timeline aplicar su startTime
+      // (5 instancias del mismo audio = 5 copias con offsets distintos)
+      let merged: SubtitleItem[] = [];
+      for (const cut of allAudioCuts) {
+        const base = baseSubsByPath.get(cut.audioPath) ?? [];
+        const off = cut.startTime;
+        merged.push(...base.map(sub => ({
+          ...sub,
+          id: `sub_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          start: Number((sub.start + off).toFixed(3)),
+          end:   Number((sub.end   + off).toFixed(3)),
+        })));
+      }
+
+      // PASO 3: ordenar y colocar en S1
+      merged.sort((a, b) => a.start - b.start);
+      setSubtitles(merged);
+      setSubtitleProgress(100);
+      setSubtitleProgressMsg('');
+      toast.success(
+        lang === 'es'
+          ? `\u00a1${merged.length} subt\u00edtulos de ${allAudioCuts.length} pista(s) colocados en S1!`
+          : `${merged.length} subtitles from ${allAudioCuts.length} track(s) placed on S1!`,
+        { id: toastId }
+      );
     } catch (err: any) {
+      toast.error(err.message || 'Error al conectar con el motor de subt\u00edtulos', { id: toastId });
+      setSubtitleProgress(0);
+      setSubtitleProgressMsg('');
+    } finally {
       setIsGeneratingSubtitles(false);
-      toast.error(err.message || 'Error al conectar con el motor de subtítulos', { id: toastId });
     }
   };
 
@@ -3097,6 +3116,8 @@ export default function VideoStudio({
               subtitleEngine={subtitleEngine}
               setSubtitleEngine={setSubtitleEngine}
               isGeneratingSubtitles={isGeneratingSubtitles}
+              subtitleProgress={subtitleProgress}
+              subtitleProgressMsg={subtitleProgressMsg}
               handleGenerateSubtitles={handleGenerateSubtitles}
               subtitleFileInputRef={subtitleFileInputRef}
               subtitlesToSrt={subtitlesToSrt}
