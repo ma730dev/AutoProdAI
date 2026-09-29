@@ -180,7 +180,7 @@ def init_channel_template_files(channel_dir: Path, channel_name: str, niche: Opt
         # ──────────────────────────────────────────────
         video_base_dir = channel_dir / "Video_1"
         init_video_project_template_files(video_base_dir, f"Video 1 de {cname}")
-
+    except Exception as e:
         print(f"[init_channel_template_files] Error al inicializar plantillas para {channel_name}: {e}")
 
 def ensure_youtube_workspace_and_template(base_ws: Path) -> Path:
