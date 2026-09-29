@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import path from 'path';
-import { getLocalBinPath } from '@/harness/setup/detector';
 import fs from 'fs';
 
 export async function POST(req: NextRequest) {
@@ -10,27 +9,8 @@ export async function POST(req: NextRequest) {
     const port = body.port || 8000;
     const cwd = path.join(process.cwd(), 'controlador');
 
-    const localBin = getLocalBinPath();
     const workspacePython = path.join(process.cwd(), '.autoprod', 'python', 'python.exe');
-
-    let pythonCmd = 'python';
-
-    if (fs.existsSync(workspacePython)) {
-      pythonCmd = workspacePython;
-    } else if (localBin) {
-      const winPython = path.join(localBin, 'python.exe');
-      const macPython = path.join(localBin, 'python3');
-      if (fs.existsSync(winPython)) {
-        pythonCmd = winPython;
-      } else if (fs.existsSync(macPython)) {
-        pythonCmd = macPython;
-      }
-    } else {
-      return NextResponse.json(
-        { success: false, error: 'AutoProd no está instalado. Ve a Configuración (Engranaje) > Sistema > Instalar Motor para configurarlo.' },
-        { status: 400 }
-      );
-    }
+    const pythonCmd = fs.existsSync(workspacePython) ? workspacePython : 'python';
 
     const hasPythonSource = fs.existsSync(path.join(cwd, 'main.py'));
 

@@ -23,6 +23,7 @@ export interface SubtitlesPanelContentProps {
   playheadTime: number;
   setPlayheadTime: (t: number) => void;
   lang: Language;
+  onOpenPlaylistModal?: () => void;
 }
 
 export default function SubtitlesPanelContent({
@@ -39,6 +40,7 @@ export default function SubtitlesPanelContent({
   playheadTime,
   setPlayheadTime,
   lang,
+  onOpenPlaylistModal,
 }: SubtitlesPanelContentProps) {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [collapsedGroups, setCollapsedGroups] = React.useState<Set<number>>(new Set());
@@ -233,7 +235,13 @@ export default function SubtitlesPanelContent({
             <div className="flex items-center gap-1.5 ml-auto">
               {hasGroups && (
                 <button
-                  onClick={() => setShowPlaylist(v => !v)}
+                  onClick={() => {
+                    if (onOpenPlaylistModal) {
+                      onOpenPlaylistModal();
+                    } else {
+                      setShowPlaylist(v => !v);
+                    }
+                  }}
                   className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
                     showPlaylist
                       ? 'bg-violet-900/60 border-violet-600/60 text-violet-300'
