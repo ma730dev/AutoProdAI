@@ -245,6 +245,8 @@ class AssistedForcedAligner:
             resampler = torchaudio.transforms.Resample(sr, bundle.sample_rate)
             waveform = resampler(waveform)
 
+        # Guardar longitud real del waveform en CPU para el ratio antes de mover a device
+        waveform_num_samples = waveform.shape[-1]
         waveform = waveform.to(self.device)
 
         # Preparar texto normalizado para el modelo fonético
@@ -259,31 +261,55 @@ class AssistedForcedAligner:
         with torch.no_grad():
             emission, _ = model(waveform)
             emission = torch.log_softmax(emission, dim=-1)
-            tokens = tokenizer(clean_transcript)
-            token_spans = aligner(emission[0], torch.tensor(tokens, device=self.device))
+            # Tokenizar cada palabra individualmente para obtener el conteo real de tokens por palabra
+            # (len(norm_word) != num_tokens para caracteres multi-byte o con diacríticos)
+            per_word_tokens = [tokenizer(norm) for _, norm in valid_pairs]
+            all_tokens = [tok for word_toks in per_word_tokens for tok in word_toks]
+            token_spans = aligner(emission[0], torch.tensor(all_tokens, device=self.device))
 
-        # El alineador devuelve spans por token; mapear a segundos reales
+        # Ratio correcto: usa la longitud real del waveform antes del .to(device)
         num_frames = emission.shape[1]
-        ratio = (waveform.shape[-1] / bundle.sample_rate) / num_frames
+        ratio = (waveform_num_samples / bundle.sample_rate) / num_frames
 
         words_data = []
         token_idx = 0
 
-        for orig_word, norm_word in valid_pairs:
-            word_len = len(norm_word)
-            if token_idx + word_len <= len(token_spans):
-                spans_for_word = token_spans[token_idx : token_idx + word_len]
-                t_start = spans_for_word[0].start * ratio
-                t_end = spans_for_word[-1].end * ratio
+        for (orig_word, norm_word), word_tokens in zip(valid_pairs, per_word_tokens):
+            num_word_tokens = len(word_tokens)
+            if num_word_tokens == 0:
+                # Palabra sin tokens fonéticos válidos (solo signos): heredar timestamp de la anterior
+                if words_data:
+                    prev = words_data[-1]
+                    words_data.append({
+                        "word": orig_word,
+                        "start": prev["end"],
+                        "end": round(prev["end"] + 0.05, 3),
+                        "probability": 1.0
+                    })
+                continue
+
+            if token_idx + num_word_tokens > len(token_spans):
+                # Tokens agotados antes de completar la letra: continuar en vez de romper
+                # para no perder las palabras restantes — se marcan sin timestamp válido
+                fallback_start = words_data[-1]["end"] if words_data else 0.0
                 words_data.append({
                     "word": orig_word,
-                    "start": float(round(t_start, 3)),
-                    "end": float(round(t_end, 3)),
-                    "probability": 1.0  # 100% de paridad garantizada con la letra oficial
+                    "start": round(fallback_start, 3),
+                    "end": round(fallback_start + 0.05, 3),
+                    "probability": 0.0  # Indica estimación, no alineación real
                 })
-                token_idx += word_len
-            else:
-                break
+                continue
+
+            spans_for_word = token_spans[token_idx : token_idx + num_word_tokens]
+            t_start = spans_for_word[0].start * ratio
+            t_end = spans_for_word[-1].end * ratio
+            words_data.append({
+                "word": orig_word,
+                "start": float(round(t_start, 3)),
+                "end": float(round(t_end, 3)),
+                "probability": 1.0  # 100% de paridad garantizada con la letra oficial
+            })
+            token_idx += num_word_tokens
 
         # Liberar memoria de Wav2Vec / MMS
         del model

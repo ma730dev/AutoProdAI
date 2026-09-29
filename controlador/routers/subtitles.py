@@ -322,9 +322,16 @@ def transcribe_faster_whisper(
 
     # Parámetros para canciones vs habla común
     if is_song:
-        # En canciones apagamos vad_filter porque Silero VAD confunde notas cantadas/melodías con música y corta versos
-        use_vad = False
-        vad_params = None
+        # VAD OBLIGATORIO en canciones: el audio puede ser un acapela de HTDemucs (silencio digital
+        # en las secciones instrumentales) o un mix FFmpeg. En ambos casos el VAD mapea los segmentos
+        # con voz, preserva los timestamps anclados a la duración total y elimina alucinaciones
+        # de Whisper en los huecos de silencio. Apagarlo provoca repetición de frases y ecos fantasma.
+        use_vad = True
+        vad_params = dict(
+            threshold=0.45,               # Umbral vocal calibrado para voz cantada (más sensible que voz hablada)
+            min_silence_duration_ms=800,   # Respeta pausas líricas y solos instrumentales
+            speech_pad_ms=300             # Margen extra para no cortar notas largas y ataques vocales
+        )
         no_speech_thresh = 0.60
         initial_prompt = (
             "Letra de canción en español con rimas, métrica lírica, estrofas y versos bien estructurados y puntuados."
@@ -334,7 +341,7 @@ def transcribe_faster_whisper(
     else:
         use_vad = True
         vad_params = dict(
-            threshold=0.3,
+            threshold=0.30,
             min_silence_duration_ms=600,
             speech_pad_ms=400
         )
@@ -347,10 +354,11 @@ def transcribe_faster_whisper(
         word_timestamps=True,
         vad_filter=use_vad,
         vad_parameters=vad_params,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,  # CRÍTICO: evita ecos y bucles de texto fantasma
         initial_prompt=initial_prompt,
         no_speech_threshold=no_speech_thresh,
-        beam_size=5  # Calidad máxima determinista
+        temperature=0.0,                   # Salida determinista
+        beam_size=5
     )
 
     full_text_parts = []
