@@ -59,6 +59,7 @@ El sistema de archivos de AutoProd se organiza de forma estricta en 3 niveles je
 
 ```
 📁 {workspace}/                                 <-- [NIVEL 0: Raíz del Workspace]
+├── 📁 Recursos/                        (B-roll, clips, proyectos de edición, loops y assets)
 └── 📁 NombreDelCanal/                          <-- [NIVEL 1: CANAL] (Cada carpeta en la raíz es un canal)
     ├── 📁 InfoCanal/                            <-- [NIVEL 2: MEMORIA Y ADN DEL CANAL] (¡NO es un video!)
     │   ├── Contexto_canal.md                   (Nicho, audiencia objetivo, tono y directivas)
@@ -67,6 +68,7 @@ El sistema de archivos de AutoProd se organiza de forma estricta en 3 niveles je
     │   └── [Recursos Gráficos: logo.jpg, banner.jpg, marca_de_agua.jpg]
     └── 📁 Titulo_Del_Video/                     <-- [NIVEL 2: PROYECTO DE VIDEO] (Hermanos de InfoCanal)
         ├── 📁 Guiones/                         <-- [NIVEL 3: Recursos de Producción] (Guion en Markdown)
+        ├── 📁 Letras/                          (Letras y líricas guardadas con el título exacto del audio)
         ├── 📁 Videos/                          (Metraje bruto, clips y render final .mp4)
         ├── 📁 Miniatura/                       (Prompts, conceptos y portada final)
         ├── 📁 Musica/                          (Pistas de audio y música de fondo)
@@ -74,10 +76,13 @@ El sistema de archivos de AutoProd se organiza de forma estricta en 3 niveles je
 ```
 
 **Reglas de Reconocimiento y Filosofía de Organización:**
-- **Canal:** Carpeta de Nivel 1 en la raíz del Workspace.
-- **`InfoCanal/`:** Carpeta de Nivel 2 exclusiva para la memoria, directivas e identidad del canal. **NUNCA** es un video.
-- **Proyecto de Video:** Carpeta de Nivel 2 dentro de un canal (hermana de `InfoCanal/`).
-- **Plantilla Base Modular (Nivel 3):** Las subcarpetas (`Guiones/`, `Videos/`, `Miniatura/`, `Musica/`, `Ambiente/`) constituyen la **estructura base recomendada** para mantener el espacio 100% ordenado y libre de caos. Sin embargo, AutoProd es un sistema adaptativo: **comprende y respeta los lineamientos específicos de cada creador**. No todo proyecto requiere los 5 recursos (ej. un canal Lo-Fi puede prescindir de guion y TTS; un videoblog utiliza el audio directo de su cámara). El Orquestador y el Video Studio operan de forma dinámica y modular sobre los recursos presentes sin imponer bloqueos artificiales.
+- **`Recursos/`:** Carpeta en la raíz del Workspace (**Nivel 0**). Almacén global y compartido de clips auxiliares (B-roll), proyectos de edición, loops y assets visuales/auditivos para el montaje en Video Studio.
+- **Canal:** Carpeta de **Nivel 1** en la raíz del Workspace (hermana de `Recursos/`).
+- **`InfoCanal/`:** Carpeta de **Nivel 2** exclusiva para la memoria, directivas e identidad del canal. **NUNCA** es un video.
+- **Proyecto de Video:** Carpeta de **Nivel 2** dentro de un canal (hermana de `InfoCanal/`).
+- **Plantilla Base Modular de Video (Nivel 3):** Las subcarpetas (`Guiones/`, `Letras/`, `Videos/`, `Miniatura/`, `Musica/`, `Ambiente/`) constituyen la estructura base recomendada de producción de cada video:
+  - **`Letras/`:** Contiene las letras y guiones líricos nombrados **con el título exacto de la pista de audio a utilizar** (ej: `Cancion.txt` para `Cancion.mp3`), permitiendo el auto-matching de subtitulado asistido.
+
 
 ---
 

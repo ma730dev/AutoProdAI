@@ -24,20 +24,119 @@ import unicodedata
 def normalize_str(s: str) -> str:
     return unicodedata.normalize('NFKD', s).encode('ASCII', 'ignore').decode('utf-8').lower()
 
+def init_video_project_template_files(video_dir: Path, video_title: str):
+    """
+    Inicializa las 7 subcarpetas de producción de Nivel 3 dentro de un Proyecto de Video (Nivel 2):
+    - Guiones/
+    - Letras/ (Letras y guiones líricos con el nombre exacto de la pista de audio)
+    - Recursos/ (B-roll, clips, proyectos de edición y assets)
+    - Videos/ (Metraje bruto, clips y render final)
+    - Miniatura/ (Prompts, conceptos y portada)
+    - Musica/ (Pistas de audio y fondo)
+    - Ambiente/ (Efectos SFX y atmósferas)
+    """
+    try:
+        video_dir.mkdir(parents=True, exist_ok=True)
+        vtitle = video_title.strip()
+
+        video_subfolders = ["Guiones", "Letras", "Videos", "Miniatura", "Musica", "Ambiente"]
+        for sub in video_subfolders:
+            (video_dir / sub).mkdir(parents=True, exist_ok=True)
+
+        # 1. Guiones/
+        guiones = video_dir / "Guiones"
+        guion_file = guiones / "Plantilla_Guion.md"
+        if not guion_file.exists():
+            guion_file.write_text(
+                f"# Guion: {vtitle}\n\n"
+                f"## 🎣 Gancho Inicial (0:00 - 0:30)\n"
+                f"- Planteamiento del problema o tema central.\n\n"
+                f"## 📖 Desarrollo Principal (0:30 - 7:00)\n"
+                f"- Punto 1: Contexto y valor\n"
+                f"- Punto 2: Demostración o narrativa\n"
+                f"- Punto 3: Conclusión accionable\n\n"
+                f"## 🚀 Cierre y Llamado a la Acción (7:00 - 8:00)\n"
+                f"- Pregunta para interacción en comentarios.\n",
+                encoding="utf-8"
+            )
+
+        # 2. Letras/
+        letras = video_dir / "Letras"
+        letras_readme = letras / "Instrucciones_Letras.md"
+        if not letras_readme.exists():
+            letras_readme.write_text(
+                f"# 📝 Letras y Líricas: {vtitle}\n\n"
+                f"## ⚠️ Regla Estricta de Nomenclatura para Sincronización Automática\n"
+                f"Para que AutoProd sincronice y alinee automáticamente los subtítulos con el audio (Modo Asistido 100% paridad):\n"
+                f"- **Debes guardar cada archivo de letra con el TÍTULO EXACTO de la pista de audio a utilizar** (en formato `.txt` o `.md`).\n"
+                f"- **Ejemplo:** Si tu audio en `Musica/` o `Recursos/` se llama:\n"
+                f"  `Cancion_Epica.mp3`\n"
+                f"  El archivo de letra aquí debe llamarse exactamente:\n"
+                f"  `Cancion_Epica.txt` o `Cancion_Epica.md`\n\n"
+                f"## 📁 Organización de Producción\n"
+                f"- Aquí se organizan todas las letras de canciones, estrofas líricas y guiones con marcas de compás para sincronización.\n",
+                encoding="utf-8"
+            )
+
+
+        # 4. Videos/
+        videos = video_dir / "Videos"
+        videos_readme = videos / "README.md"
+        if not videos_readme.exists():
+            videos_readme.write_text(
+                f"# Videos y Clips ({vtitle})\nAlmacenamiento de metraje bruto, grabaciones y exportación final .mp4.\n", 
+                encoding="utf-8"
+            )
+
+        # 5. Miniatura/
+        miniatura = video_dir / "Miniatura"
+        miniatura_ideas = miniatura / "Ideas_Miniaturas.md"
+        if not miniatura_ideas.exists():
+            miniatura_ideas.write_text(
+                f"# Conceptos de Miniatura: {vtitle}\n\n"
+                f"- **Concepto Principal:** Elemento central de alto impacto y contraste.\n"
+                f"- **Tipografía:** Máximo 3 palabras grandes y legibles en dispositivos móviles.\n"
+                f"- **Colores:** Tonos vibrantes sobre fondo oscuro.\n",
+                encoding="utf-8"
+            )
+
+        # 6. Musica/
+        musica = video_dir / "Musica"
+        musica_readme = musica / "README.md"
+        if not musica_readme.exists():
+            musica_readme.write_text(
+                f"# Música de Fondo ({vtitle})\nPistas de audio principales y música libre de derechos.\n", 
+                encoding="utf-8"
+            )
+
+        # 7. Ambiente/
+        ambiente = video_dir / "Ambiente"
+        ambiente_readme = ambiente / "README.md"
+        if not ambiente_readme.exists():
+            ambiente_readme.write_text(
+                f"# Efectos SFX y Atmósferas ({vtitle})\nEfectos de sonido (SFX), transiciones auditivas y foley.\n", 
+                encoding="utf-8"
+            )
+    except Exception as e:
+        print(f"[init_video_project_template_files] Error al inicializar plantillas para video {video_title}: {e}")
+
 def init_channel_template_files(channel_dir: Path, channel_name: str, niche: Optional[str] = None):
-    """Crea la estructura modular completa de un canal con sus carpetas y plantillas Markdown."""
+    """
+    Crea la estructura estricta de un Canal (Nivel 1):
+    1. InfoCanal/ (NIVEL 2: Memoria, ADN y directivas del canal - ¡NO es un video!).
+    2. Video_1/ (NIVEL 2: Proyecto de Video base con sus subcarpetas de producción Nivel 3).
+    """
     try:
         channel_dir.mkdir(parents=True, exist_ok=True)
         cname = channel_name.strip()
         cniche = (niche or cname).strip()
 
-        # 1. Subcarpetas de producción: InfoCanal, Guiones, Videos, Miniatura, Musica, Imagenes
-        subfolders = ["InfoCanal", "Guiones", "Videos", "Miniatura", "Musica", "Imagenes"]
-        for sub in subfolders:
-            (channel_dir / sub).mkdir(parents=True, exist_ok=True)
-
-        # 2. Plantillas en InfoCanal/
+        # ──────────────────────────────────────────────
+        # 1. InfoCanal/ (NIVEL 2: MEMORIA Y ADN DEL CANAL)
+        # ──────────────────────────────────────────────
         info_canal = channel_dir / "InfoCanal"
+        info_canal.mkdir(parents=True, exist_ok=True)
+
         contexto_file = info_canal / "Contexto_canal.md"
         if not contexto_file.exists():
             contexto_file.write_text(
@@ -76,53 +175,12 @@ def init_channel_template_files(channel_dir: Path, channel_name: str, niche: Opt
                 encoding="utf-8"
             )
 
-        # 3. Plantilla en Guiones/
-        guiones = channel_dir / "Guiones"
-        guion_file = guiones / "Plantilla_Guion.md"
-        if not guion_file.exists():
-            guion_file.write_text(
-                f"# Guion: [Título del Video para {cname}]\n\n"
-                f"## 🎣 Gancho Inicial (0:00 - 0:30)\n"
-                f"- Planteamiento del problema y por qué este contenido es indispensable.\n\n"
-                f"## 📖 Desarrollo Principal (0:30 - 7:00)\n"
-                f"- Punto 1: Concepto clave y contexto\n"
-                f"- Punto 2: Demostración práctica y desglose de valor\n"
-                f"- Punto 3: Conclusión accionable\n\n"
-                f"## 🚀 Llamado a la Acción y Cierre (7:00 - 8:00)\n"
-                f"- Pregunta para interacción en comentarios y cierre de video.\n",
-                encoding="utf-8"
-            )
+        # ──────────────────────────────────────────────
+        # 2. Proyecto de Video Base (NIVEL 2: HERMANO DE INFOCANAL)
+        # ──────────────────────────────────────────────
+        video_base_dir = channel_dir / "Video_1"
+        init_video_project_template_files(video_base_dir, f"Video 1 de {cname}")
 
-        # 4. Videos/
-        videos = channel_dir / "Videos"
-        videos_readme = videos / "README.md"
-        if not videos_readme.exists():
-            videos_readme.write_text(f"# Videos y Clips ({cname})\nAlmacenamiento de metraje bruto, grabaciones y exportaciones finales.\n", encoding="utf-8")
-
-        # 5. Miniatura/
-        miniatura = channel_dir / "Miniatura"
-        miniatura_ideas = miniatura / "Ideas_Miniaturas.md"
-        if not miniatura_ideas.exists():
-            miniatura_ideas.write_text(
-                f"# Conceptos de Miniaturas: {cname}\n\n"
-                f"- **Concepto 1:** Expresión de alto impacto con elemento central de contraste.\n"
-                f"- **Tipografía:** Máximo 3 palabras grandes y legibles en dispositivos móviles.\n"
-                f"- **Colores:** Tonos vibrantes sobre fondo oscuro.\n",
-                encoding="utf-8"
-            )
-
-        # 6. Musica/
-        musica = channel_dir / "Musica"
-        musica_readme = musica / "README.md"
-        if not musica_readme.exists():
-            musica_readme.write_text(f"# Música de Fondo ({cname})\nPistas musicales y efectos sonoros libres de derechos de autor.\n", encoding="utf-8")
-
-        # 7. Imagenes/
-        imagenes = channel_dir / "Imagenes"
-        imagenes_readme = imagenes / "README.md"
-        if not imagenes_readme.exists():
-            imagenes_readme.write_text(f"# Recursos Gráficos e Imágenes ({cname})\nBanners, texturas, capturas y miniaturas generadas con IA.\n", encoding="utf-8")
-    except Exception as e:
         print(f"[init_channel_template_files] Error al inicializar plantillas para {channel_name}: {e}")
 
 def ensure_youtube_workspace_and_template(base_ws: Path) -> Path:
@@ -135,8 +193,27 @@ def ensure_youtube_workspace_and_template(base_ws: Path) -> Path:
 
         youtube_dir.mkdir(parents=True, exist_ok=True)
 
+        # 0. Recursos/ (NIVEL 0: Raíz del Workspace) - Clips, B-rolls y assets compartidos
+        recursos_dir = youtube_dir / "Recursos"
+        recursos_dir.mkdir(parents=True, exist_ok=True)
+        recursos_readme = recursos_dir / "README.md"
+        if not recursos_readme.exists():
+            recursos_readme.write_text(
+                "# 📁 Recursos Globales (Nivel 0: Raíz del Workspace)\n\n"
+                "Almacén global y compartido para todos los canales y proyectos de AutoProd:\n"
+                "- B-roll y metraje de apoyo\n"
+                "- Clips de video reutilizables y loops de animación\n"
+                "- Proyectos de edición y plantillas de montaje\n"
+                "- Assets visuales, logotipos y efectos gráficos\n",
+                encoding="utf-8"
+            )
+
         # Si youtube_dir está vacía de canales, crear Canal_1 con su plantilla completa
-        channel_dirs = [d for d in youtube_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
+        # Se excluyen carpetas de sistema y la carpeta global Recursos/
+        channel_dirs = [
+            d for d in youtube_dir.iterdir() 
+            if d.is_dir() and not d.name.startswith('.') and d.name.lower() != "recursos"
+        ]
         if not channel_dirs:
             init_channel_template_files(youtube_dir / "Canal_1", "Canal_1", "Temática Principal del Canal")
 

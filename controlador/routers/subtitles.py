@@ -467,23 +467,30 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
 
             is_song_file = is_folder or file_item.suffix.lower() in {".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg", ".wma"}
 
-            # Buscar letra oficial (en la petición o en archivo homónimo .txt / .lyrics)
+            # Buscar letra oficial (en la petición, homónima local o dentro de la carpeta Letras/)
             lyrics_content = req.lyrics_text
             if not lyrics_content:
-                txt_candidate = file_item.with_suffix(".txt")
-                lyrics_candidate = file_item.with_name(f"{file_item.stem}.lyrics")
-                if txt_candidate.exists():
-                    try:
-                        with open(txt_candidate, "r", encoding="utf-8") as lf:
-                            lyrics_content = lf.read().strip()
-                    except Exception:
-                        pass
-                elif lyrics_candidate.exists():
-                    try:
-                        with open(lyrics_candidate, "r", encoding="utf-8") as lf:
-                            lyrics_content = lf.read().strip()
-                    except Exception:
-                        pass
+                stem = file_item.stem
+                candidates = [
+                    file_item.with_suffix(".txt"),
+                    file_item.with_suffix(".md"),
+                    file_item.with_name(f"{stem}.lyrics"),
+                    file_item.parent / "Letras" / f"{stem}.txt",
+                    file_item.parent / "Letras" / f"{stem}.md",
+                    file_item.parent.parent / "Letras" / f"{stem}.txt",
+                    file_item.parent.parent / "Letras" / f"{stem}.md",
+                ]
+                for cand in candidates:
+                    if cand.exists():
+                        try:
+                            with open(cand, "r", encoding="utf-8") as lf:
+                                content = lf.read().strip()
+                                if content:
+                                    lyrics_content = content
+                                    break
+                        except Exception:
+                            pass
+
 
             # 1. Extraer / optimizar audio con separación acústica vocal
             SUB_JOBS[job_id]["message"] = f"Optimizando audio para {file_item.name}..."

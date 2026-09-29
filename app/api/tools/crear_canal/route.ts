@@ -169,18 +169,41 @@ export async function POST(req: Request) {
     // ──────────────────────────────────────────────
     // 4. Crear Físicamente la Estructura en Disco
     // ──────────────────────────────────────────────
-    const guionesFolder = path.join(channelFolderPath, 'Guiones');
-    const videosFolder = path.join(channelFolderPath, 'Videos');
-    const miniaturaFolder = path.join(channelFolderPath, 'Miniatura');
-    const musicaFolder = path.join(channelFolderPath, 'Musica');
-    const imagenesFolder = path.join(channelFolderPath, 'Imagenes');
+    // Nivel 0: Recursos/ (Almacén global de clips, loops y assets compartidos)
+    const recursosGlobalFolder = path.join(workspaceRoot, 'Recursos');
+    await fs.mkdir(recursosGlobalFolder, { recursive: true });
+    const globalRecursosReadme = path.join(recursosGlobalFolder, 'README.md');
+    try {
+      await fs.writeFile(
+        globalRecursosReadme,
+        `# 📁 Recursos Globales (Nivel 0: Raíz del Workspace)\n\nAlmacén global y compartido para todos los canales y proyectos:\n- B-roll y metraje de apoyo\n- Clips de video reutilizables y loops de animación\n- Proyectos de edición y plantillas de montaje\n- Assets visuales, logotipos y efectos gráficos\n`,
+        { flag: 'wx', encoding: 'utf-8' }
+      );
+    } catch {
+      // Ignorar si ya existe
+    }
+
+    // Nivel 2: InfoCanal (Memoria/ADN) y Video_1 (Proyecto de Video)
+    const video1FolderPath = path.join(channelFolderPath, 'Video_1');
+
+    // Nivel 3 (Dentro de Video_1): Carpetas de producción del video
+    const guionesFolder = path.join(video1FolderPath, 'Guiones');
+    const letrasFolder = path.join(video1FolderPath, 'Letras');
+    const videosFolder = path.join(video1FolderPath, 'Videos');
+    const miniaturaFolder = path.join(video1FolderPath, 'Miniatura');
+    const musicaFolder = path.join(video1FolderPath, 'Musica');
+    const ambienteFolder = path.join(video1FolderPath, 'Ambiente');
 
     await fs.mkdir(infoCanalFolderPath, { recursive: true });
+    await fs.mkdir(video1FolderPath, { recursive: true });
     await fs.mkdir(guionesFolder, { recursive: true });
+    await fs.mkdir(letrasFolder, { recursive: true });
     await fs.mkdir(videosFolder, { recursive: true });
     await fs.mkdir(miniaturaFolder, { recursive: true });
     await fs.mkdir(musicaFolder, { recursive: true });
-    await fs.mkdir(imagenesFolder, { recursive: true });
+    await fs.mkdir(ambienteFolder, { recursive: true });
+
+
 
     // 5. Generar los 4 Archivos de Memoria Canónica en InfoCanal/
     const contextoContent = `# 🧠 Contexto y ADN del Canal — ${cleanChannelName}
@@ -281,7 +304,9 @@ Directivas estéticas para los elementos gráficos del canal (archivos a ubicar 
     const pathMiniatura = path.join(miniaturaFolder, 'Ideas_Miniaturas.md');
     const pathVideosReadme = path.join(videosFolder, 'README.md');
     const pathMusicaReadme = path.join(musicaFolder, 'README.md');
-    const pathImagenesReadme = path.join(imagenesFolder, 'README.md');
+    const pathAmbienteReadme = path.join(ambienteFolder, 'README.md');
+    const pathLetrasReadme = path.join(letrasFolder, 'Instrucciones_Letras.md');
+    const pathRecursosReadme = path.join(recursosFolder, 'README.md');
 
     await fs.writeFile(pathContexto, contextoContent, 'utf-8');
     await fs.writeFile(pathMetricas, metricasContent, 'utf-8');
@@ -289,9 +314,19 @@ Directivas estéticas para los elementos gráficos del canal (archivos a ubicar 
     await fs.writeFile(pathBranding, brandingContent, 'utf-8');
     await fs.writeFile(pathGuion, plantillaGuionContent, 'utf-8');
     await fs.writeFile(pathMiniatura, plantillaMiniaturaContent, 'utf-8');
-    await fs.writeFile(pathVideosReadme, `# Videos y Clips (${cleanChannelName})\nAlmacena aquí el metraje bruto, tomas y renders finales.\n`, 'utf-8');
-    await fs.writeFile(pathMusicaReadme, `# Pistas de Música (${cleanChannelName})\nPistas de audio de fondo libres de copyright.\n`, 'utf-8');
-    await fs.writeFile(pathImagenesReadme, `# Recursos Visuales e Imágenes (${cleanChannelName})\nBanners, capturas y miniaturas generadas con IA.\n`, 'utf-8');
+    await fs.writeFile(pathVideosReadme, `# Videos y Clips (Video 1 de ${cleanChannelName})\nAlmacena aquí el metraje bruto, tomas y renders finales .mp4.\n`, 'utf-8');
+    await fs.writeFile(pathMusicaReadme, `# Pistas de Música (Video 1 de ${cleanChannelName})\nPistas de audio de fondo y música libre de copyright.\n`, 'utf-8');
+    await fs.writeFile(pathAmbienteReadme, `# Efectos SFX y Atmósferas (Video 1 de ${cleanChannelName})\nEfectos de sonido (SFX), transiciones auditivas y foley.\n`, 'utf-8');
+    await fs.writeFile(
+      pathLetrasReadme,
+      `# 📝 Letras y Líricas (Video 1 de ${cleanChannelName})\n\n## ⚠️ Regla Estricta de Nomenclatura para Sincronización Automática\nPara que AutoProd pueda sincronizar y alinear automáticamente los subtítulos con el audio (Modo Asistido 100% paridad):\n- **Debes guardar cada archivo de letra con el TÍTULO EXACTO de la pista de audio a utilizar** (en formato \`.txt\` o \`.md\`).\n- **Ejemplo:** Si tu audio en Musica/ o Recursos/ se llama:\n  \`Cancion_Epica.mp3\`\n  La letra aquí debe nombrarse exactamente:\n  \`Cancion_Epica.txt\` o \`Cancion_Epica.md\`\n\n## 📁 Organización de Producción\n- En esta carpeta se organizan todas las letras de canciones, estrofas líricas y guiones listos para subtitulado y sincronización.\n`,
+      'utf-8'
+    );
+    await fs.writeFile(
+      pathRecursosReadme,
+      `# 🎨 Recursos de Edición y Producción (Video 1 de ${cleanChannelName})\n\nCarpeta principal de recursos multimedia para edición y montaje en Video Studio / Timeline Pro:\n- Metraje de apoyo (B-roll), clips de video reutilizables y fondos en bucle (Loops).\n- Archivos de proyecto y elementos auxiliares para la edición de este video.\n`,
+      'utf-8'
+    );
 
     return NextResponse.json({
       status: 'success',
@@ -308,10 +343,12 @@ Directivas estéticas para los elementos gráficos del canal (archivos a ubicar 
         'InfoCanal/Metricas_canal.md',
         'InfoCanal/Historial_canal.md',
         'InfoCanal/Branding_canal.md',
-        'Guiones/Plantilla_Guion.md',
-        'Miniatura/Ideas_Miniaturas.md',
+        'Video_1/Guiones/Plantilla_Guion.md',
+        'Video_1/Letras/Instrucciones_Letras.md',
+        'Video_1/Recursos/README.md',
+        'Video_1/Miniatura/Ideas_Miniaturas.md',
       ],
-      message: `Canal "${cleanChannelName}" creado e inicializado exitosamente en ${channelLocalPath} con su estructura modular completa (InfoCanal, Guiones, Videos, Miniatura, Musica, Imagenes) y plantillas Markdown.`
+      message: `Canal "${cleanChannelName}" inicializado exitosamente en ${channelLocalPath}. Estructura creada: InfoCanal/ (memoria y ADN del canal) y Video_1/ con sus carpetas de producción (Guiones, Letras, Recursos, Videos, Miniatura, Musica, Ambiente).`
     });
 
   } catch (error: any) {

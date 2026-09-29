@@ -156,22 +156,26 @@ jobs:
       - name: Preparar Paquete y Binarios (macOS)
         run: |
           mkdir -p dist bin dist/AutoProdAI-macOS/bin
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Recursos
           mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/InfoCanal
-          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Guiones
-          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Videos
-          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Miniatura
-          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Musica
-          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Imagenes
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Guiones
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Letras
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Videos
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Miniatura
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Musica
+          mkdir -p dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Ambiente
 
           # Plantillas de recursos
+          printf "# 📁 Recursos Globales (Nivel 0: Raíz del Workspace)\n\nAlmacén global y compartido para todos los canales y proyectos de AutoProd:\n- B-roll y metraje de apoyo\n- Clips de video reutilizables y loops de animación\n- Proyectos de edición y plantillas de montaje\n- Assets visuales, logotipos y efectos gráficos\n" > dist/AutoProdAI-macOS/workspace/youtube/Recursos/README.md
           printf "# Contexto y ADN del Canal: Canal_1\n\n## 🎯 Nicho y Audiencia Objetivo\n- **Temática / Nicho:** Temática Principal del Canal\n- **Público Objetivo:** Creadores y entusiastas del nicho\n- **Tono de Voz:** Cercano, profesional y dinámico\n\n## 📋 Directivas de Producción y Marca\n- **Estilo visual:** Moderno, limpio y minimalista\n- **Duración promedio:** 8 - 15 minutos\n- **Frecuencia:** Semanal\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/InfoCanal/Contexto_canal.md
           printf "# Métricas y Rendimiento del Canal: Canal_1\n\n| Fecha | Video | Vistas | CTR Miniatura | Retención Media |\n|---|---|---|---|---|\n| Registro | Video 1 (Base) | - | - | - |\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/InfoCanal/Metricas_canal.md
           printf "# Historial de Contenido y Banco de Ideas: Canal_1\n\n## 📌 Temas Cubiertos\n- [x] Apertura e inicialización del canal Canal_1\n\n## 💡 Banco de Ideas Futuras\n- Idea 1: Introducción a la temática y fundamentos clave\n- Idea 2: Guía práctica paso a paso para creadores\n- Idea 3: Análisis de tendencias y errores comunes\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/InfoCanal/Historial_canal.md
-          printf "# Guion: [Título del Video para Canal_1]\n\n## 🎣 Gancho Inicial (0:00 - 0:30)\n- Planteamiento del problema y por qué este contenido es indispensable.\n\n## 📖 Desarrollo Principal (0:30 - 7:00)\n- Punto 1: Concepto clave y contexto\n- Punto 2: Demostración práctica y desglose de valor\n- Punto 3: Conclusión accionable\n\n## 🚀 Llamado a la Acción y Cierre (7:00 - 8:00)\n- Pregunta para interacción en comentarios y cierre de video.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Guiones/Plantilla_Guion.md
-          printf "# Videos y Clips (Canal_1)\nAlmacenamiento de metraje bruto, grabaciones y exportaciones finales.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Videos/README.md
-          printf "# Conceptos de Miniaturas: Canal_1\n\n- **Concepto 1:** Expresión de alto impacto con elemento central de contraste.\n- **Tipografía:** Máximo 3 palabras grandes y legibles en dispositivos móviles.\n- **Colores:** Tonos vibrantes sobre fondo oscuro.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Miniatura/Ideas_Miniaturas.md
-          printf "# Música de Fondo (Canal_1)\nPistas musicales y efectos sonoros libres de derechos de autor.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Musica/README.md
-          printf "# Recursos Gráficos e Imágenes (Canal_1)\nBanners, texturas, capturas y miniaturas generadas con IA.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Imagenes/README.md
+          printf "# Guion: [Título del Video 1 para Canal_1]\n\n## 🎣 Gancho Inicial (0:00 - 0:30)\n- Planteamiento del problema y por qué este contenido es indispensable.\n\n## 📖 Desarrollo Principal (0:30 - 7:00)\n- Punto 1: Concepto clave y contexto\n- Punto 2: Demostración práctica y desglose de valor\n- Punto 3: Conclusión accionable\n\n## 🚀 Llamado a la Acción y Cierre (7:00 - 8:00)\n- Pregunta para interacción en comentarios y cierre de video.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Guiones/Plantilla_Guion.md
+          printf "# 📝 Letras y Líricas (Video 1 de Canal_1)\n\n## ⚠️ Regla Estricta de Nomenclatura para Sincronización Automática\nPara que AutoProd pueda sincronizar y alinear automáticamente los subtítulos con el audio (Modo Asistido 100%% paridad):\n- Debes guardar cada archivo de letra con el TÍTULO EXACTO de la pista de audio a utilizar (en formato .txt o .md).\n- Ejemplo: Si tu audio se llama Cancion.mp3, la letra debe nombrarse exactamente Cancion.txt o Cancion.md.\n\n## 📁 Organización de Producción\n- Aquí se organizan todas las letras de canciones y guiones líricos.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Letras/Instrucciones_Letras.md
+          printf "# Videos y Clips (Video 1 de Canal_1)\nAlmacenamiento de metraje bruto, grabaciones y exportaciones finales.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Videos/README.md
+          printf "# Conceptos de Miniaturas: Video 1 de Canal_1\n\n- **Concepto 1:** Expresión de alto impacto con elemento central de contraste.\n- **Tipografía:** Máximo 3 palabras grandes y legibles en dispositivos móviles.\n- **Colores:** Tonos vibrantes sobre fondo oscuro.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Miniatura/Ideas_Miniaturas.md
+          printf "# Música de Fondo (Video 1 de Canal_1)\nPistas musicales y efectos sonoros libres de derechos de autor.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Musica/README.md
+          printf "# Efectos SFX y Atmósferas (Video 1 de Canal_1)\nEfectos de sonido (SFX), transiciones auditivas y foley.\n" > dist/AutoProdAI-macOS/workspace/youtube/Canal_1/Video_1/Ambiente/README.md
 
           cp controlador/dist/autoprod-motor dist/autoprod-motor
           chmod +x dist/autoprod-motor

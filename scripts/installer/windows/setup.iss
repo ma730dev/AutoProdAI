@@ -42,13 +42,17 @@ Source: "..\..\..\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubd
 Name: "{app}\bin"
 Name: "{app}\workspace"
 Name: "{app}\workspace\youtube"
+Name: "{app}\workspace\youtube\Recursos"
 Name: "{app}\workspace\youtube\Canal_1"
 Name: "{app}\workspace\youtube\Canal_1\InfoCanal"
-Name: "{app}\workspace\youtube\Canal_1\Guiones"
-Name: "{app}\workspace\youtube\Canal_1\Videos"
-Name: "{app}\workspace\youtube\Canal_1\Miniatura"
-Name: "{app}\workspace\youtube\Canal_1\Musica"
-Name: "{app}\workspace\youtube\Canal_1\Imagenes"
+Name: "{app}\workspace\youtube\Canal_1\Video_1"
+Name: "{app}\workspace\youtube\Canal_1\Video_1\Guiones"
+Name: "{app}\workspace\youtube\Canal_1\Video_1\Letras"
+Name: "{app}\workspace\youtube\Canal_1\Video_1\Videos"
+Name: "{app}\workspace\youtube\Canal_1\Video_1\Miniatura"
+Name: "{app}\workspace\youtube\Canal_1\Video_1\Musica"
+Name: "{app}\workspace\youtube\Canal_1\Video_1\Ambiente"
+
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
@@ -118,8 +122,8 @@ begin
       '- Idea 2: Guía práctica paso a paso para creadores' + #13#10 +
       '- Idea 3: Análisis de tendencias y errores comunes' + #13#10, False);
 
-    SaveStringToFile(CanalPath + '\Guiones\Plantilla_Guion.md',
-      '# Guion: [Título del Video para Canal_1]' + #13#10#13#10 +
+    SaveStringToFile(CanalPath + '\Video_1\Guiones\Plantilla_Guion.md',
+      '# Guion: [Título del Video 1 para Canal_1]' + #13#10#13#10 +
       '## 🎣 Gancho Inicial (0:00 - 0:30)' + #13#10 +
       '- Planteamiento del problema y por qué este contenido es indispensable.' + #13#10#13#10 +
       '## 📖 Desarrollo Principal (0:30 - 7:00)' + #13#10 +
@@ -129,23 +133,40 @@ begin
       '## 🚀 Llamado a la Acción y Cierre (7:00 - 8:00)' + #13#10 +
       '- Pregunta para interacción en comentarios y cierre de video.' + #13#10, False);
 
-    SaveStringToFile(CanalPath + '\Videos\README.md',
-      '# Videos y Clips (Canal_1)' + #13#10 +
-      'Almacenamiento de metraje bruto, grabaciones y exportaciones finales.' + #13#10, False);
+    SaveStringToFile(CanalPath + '\Video_1\Letras\Instrucciones_Letras.md',
+      '# 📝 Letras y Líricas (Video 1 de Canal_1)' + #13#10#13#10 +
+      '## ⚠️ Regla Estricta de Nomenclatura para Sincronización Automática' + #13#10 +
+      'Para que AutoProd pueda sincronizar y alinear automáticamente los subtítulos con el audio (Modo Asistido 100% paridad):' + #13#10 +
+      '- Debes guardar cada archivo de letra con el TÍTULO EXACTO de la pista de audio a utilizar (en formato .txt o .md).' + #13#10 +
+      '- Ejemplo: Si tu audio en Musica/ o Recursos/ se llama Cancion.mp3, la letra debe nombrarse Cancion.txt o Cancion.md.' + #13#10#13#10 +
+      '## 📁 Organización de Producción' + #13#10 +
+      '- En esta carpeta se organizan todas las letras de canciones, estrofas líricas y guiones de contenido listos para producción.' + #13#10, False);
 
-    SaveStringToFile(CanalPath + '\Miniatura\Ideas_Miniaturas.md',
-      '# Conceptos de Miniaturas: Canal_1' + #13#10#13#10 +
+    SaveStringToFile(WorkspacePath + '\Recursos\README.md',
+      '# 📁 Recursos Globales (Nivel 0: Raíz del Workspace)' + #13#10#13#10 +
+      'Almacén global y compartido para todos los canales y proyectos de AutoProd:' + #13#10 +
+      '- B-roll y metraje de apoyo' + #13#10 +
+      '- Clips de video reutilizables y loops de animación' + #13#10 +
+      '- Proyectos de edición y plantillas de montaje' + #13#10 +
+      '- Assets visuales, logotipos y efectos gráficos' + #13#10, False);
+
+    SaveStringToFile(CanalPath + '\Video_1\Videos\README.md',
+      '# Videos y Clips (Video 1 de Canal_1)' + #13#10 +
+      'Almacenamiento de metraje bruto, grabaciones y exportación final .mp4.' + #13#10, False);
+
+    SaveStringToFile(CanalPath + '\Video_1\Miniatura\Ideas_Miniaturas.md',
+      '# Conceptos de Miniaturas: Video 1 de Canal_1' + #13#10#13#10 +
       '- **Concepto 1:** Expresión de alto impacto con elemento central de contraste.' + #13#10 +
       '- **Tipografía:** Máximo 3 palabras grandes y legibles en dispositivos móviles.' + #13#10 +
       '- **Colores:** Tonos vibrantes sobre fondo oscuro.' + #13#10, False);
 
-    SaveStringToFile(CanalPath + '\Musica\README.md',
-      '# Música de Fondo (Canal_1)' + #13#10 +
+    SaveStringToFile(CanalPath + '\Video_1\Musica\README.md',
+      '# Música de Fondo (Video 1 de Canal_1)' + #13#10 +
       'Pistas musicales y efectos sonoros libres de derechos de autor.' + #13#10, False);
 
-    SaveStringToFile(CanalPath + '\Imagenes\README.md',
-      '# Recursos Gráficos e Imágenes (Canal_1)' + #13#10 +
-      'Banners, texturas, capturas y miniaturas generadas con IA.' + #13#10, False);
+    SaveStringToFile(CanalPath + '\Video_1\Ambiente\README.md',
+      '# Efectos SFX y Atmósferas (Video 1 de Canal_1)' + #13#10 +
+      'Efectos de sonido (SFX), transiciones auditivas y foley.' + #13#10, False);
 
     StringChangeEx(WorkspacePath, '\', '\\', True);
     StringChangeEx(BinPath, '\', '\\', True);
