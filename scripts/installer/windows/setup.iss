@@ -1,5 +1,5 @@
 #define MyAppName "AutoProd Motor Local"
-#define MyAppVersion "1.6.0"
+#define MyAppVersion "1.6.3"
 #define MyAppPublisher "AutoProd AI"
 #define MyAppURL "https://autoprod.io"
 #define MyAppExeName "autoprod-motor.exe"
