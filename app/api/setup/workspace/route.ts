@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getWorkspacePath } from '@/harness/setup/detector';
+import { getWorkspacePath } from '@/lib/setup/detector';
 
 export async function GET() {
   try {

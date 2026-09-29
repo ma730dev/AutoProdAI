@@ -3,7 +3,7 @@ import { db } from '@/src/prisma/db';
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs/promises';
 import path from 'path';
-import { getWorkspacePath } from '@/harness/setup/detector';
+import { getWorkspacePath } from '@/lib/setup/detector';
 import { PLANS_CONFIG } from '@/lib/pricing-config';
 
 function getSupabaseClient() {

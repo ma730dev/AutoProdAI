@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { detectDependencies } from '@/harness/setup/detector';
+import { detectDependencies } from '@/lib/setup/detector';
 import path from 'path';
 import fs from 'fs/promises';
 
@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     const dependencies = await detectDependencies();
     
     // Read manifest to get descriptions
-    const manifestPath = path.join(process.cwd(), 'harness', 'setup', 'manifest.json');
+    const manifestPath = path.join(process.cwd(), 'lib', 'setup', 'manifest.json');
     const manifestData = await fs.readFile(manifestPath, 'utf-8');
     const manifest = JSON.parse(manifestData);
 

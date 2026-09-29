@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { setupEmitter } from '../stream/route';
-import { detectDependencies, getWorkspacePath, getLocalBinPath } from '@/harness/setup/detector';
-import { downloadFile } from '@/harness/setup/downloader';
-import { installBinary, installPipPackage } from '@/harness/setup/installer';
+import { detectDependencies, getWorkspacePath, getLocalBinPath } from '@/lib/setup/detector';
+import { downloadFile } from '@/lib/setup/downloader';
+import { installBinary, installPipPackage } from '@/lib/setup/installer';
 import { createClient } from '@/lib/supabase/server';
 import { db as prisma } from '@/src/prisma/db';
 import path from 'path';
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       fsSync.writeFileSync(configPath, JSON.stringify({ basePath: body.basePath }, null, 2));
     }
 
-    const manifestPath = path.join(process.cwd(), 'harness', 'setup', 'manifest.json');
+    const manifestPath = path.join(process.cwd(), 'lib', 'setup', 'manifest.json');
     const manifestData = await fs.readFile(manifestPath, 'utf-8');
     const manifest = JSON.parse(manifestData);
 

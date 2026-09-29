@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/prisma/db';
 import { createClient } from '@/lib/supabase/server';
-import { getWorkspacePath } from '@/harness/setup/detector';
+import { getWorkspacePath } from '@/lib/setup/detector';
 import fs from 'fs';
 import path from 'path';
 

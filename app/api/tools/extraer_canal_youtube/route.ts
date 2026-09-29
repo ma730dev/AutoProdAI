@@ -5,7 +5,7 @@ import { createOpenAI, openai } from '@ai-sdk/openai';
 import { db as prisma } from '@/src/prisma/db';
 import fs from 'fs/promises';
 import path from 'path';
-import { getWorkspacePath } from '@/harness/setup/detector';
+import { getWorkspacePath } from '@/lib/setup/detector';
 import { extractFullChannel } from '@/lib/youtube/extractor';
 import { processChannelAnalytics } from '@/lib/youtube/analytics';
 import { PLANS_CONFIG } from '@/lib/pricing-config';

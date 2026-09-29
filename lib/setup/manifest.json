@@ -1,0 +1,28 @@
+{
+  "dependencies": [
+    {
+      "id": "python",
+      "name": "Python 3.11+",
+      "type": "binary",
+      "description": "Intérprete de Python para ejecutar el motor controlador local.",
+      "windows_url": "",
+      "mac_url": ""
+    },
+    {
+      "id": "ffmpeg",
+      "name": "FFmpeg",
+      "type": "binary",
+      "description": "Procesador de audio y video para renderizado de clips y subtítulos.",
+      "windows_url": "",
+      "mac_url": ""
+    },
+    {
+      "id": "whisper",
+      "name": "Whisper AI",
+      "type": "pip",
+      "description": "Motor de transcripción e IA para subtitulación automática.",
+      "windows_url": "",
+      "mac_url": ""
+    }
+  ]
+}

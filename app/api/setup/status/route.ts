@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { detectDependencies } from '@/harness/setup/detector';
+import { detectDependencies } from '@/lib/setup/detector';
 
 export async function GET() {
   try {

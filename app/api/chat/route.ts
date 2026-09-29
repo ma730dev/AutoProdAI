@@ -8,7 +8,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { db as prisma } from '@/src/prisma/db';
 import { isOrchestratorFreeForUser, PLANS_CONFIG } from '@/lib/pricing-config';
 import { checkChatRateLimit, attachRateLimitHeaders } from '@/lib/rate-limit';
-import { getWorkspacePath } from '@/harness/setup/detector';
+import { getWorkspacePath } from '@/lib/setup/detector';
 import path from 'path';
 import fs from 'fs';
 import { evaluateSemanticRoute, logIntentTelemetry, getToolsForDomain, SemanticRouteMatch } from '@/lib/semantic-router';
