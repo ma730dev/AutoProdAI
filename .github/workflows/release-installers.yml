@@ -44,6 +44,13 @@ jobs:
             --collect-all faster_whisper `
             --collect-all ctranslate2 `
             --collect-all edge_tts `
+            --collect-all torch `
+            --collect-all torchaudio `
+            --collect-all demucs `
+            --collect-all soundfile `
+            --copy-metadata demucs `
+            --copy-metadata torchaudio `
+            --copy-metadata torch `
             --hidden-import "routers.workspace" `
             --hidden-import "routers.chat" `
             --hidden-import "routers.video_looper" `
@@ -51,6 +58,11 @@ jobs:
             --hidden-import "routers.tts" `
             --hidden-import "routers.system" `
             --hidden-import "hardware" `
+            --hidden-import "services.audio_subtitles_pipeline" `
+            --hidden-import "torchaudio.pipelines" `
+            --hidden-import "demucs.pretrained" `
+            --hidden-import "demucs.apply" `
+            --hidden-import "demucs.separate" `
             main.py
 
       - name: Preparar Directorio dist/ y bin/
@@ -120,6 +132,13 @@ jobs:
             --collect-all faster_whisper \
             --collect-all ctranslate2 \
             --collect-all edge_tts \
+            --collect-all torch \
+            --collect-all torchaudio \
+            --collect-all demucs \
+            --collect-all soundfile \
+            --copy-metadata demucs \
+            --copy-metadata torchaudio \
+            --copy-metadata torch \
             --hidden-import "routers.workspace" \
             --hidden-import "routers.chat" \
             --hidden-import "routers.video_looper" \
@@ -127,6 +146,11 @@ jobs:
             --hidden-import "routers.tts" \
             --hidden-import "routers.system" \
             --hidden-import "hardware" \
+            --hidden-import "services.audio_subtitles_pipeline" \
+            --hidden-import "torchaudio.pipelines" \
+            --hidden-import "demucs.pretrained" \
+            --hidden-import "demucs.apply" \
+            --hidden-import "demucs.separate" \
             main.py
 
       - name: Preparar Paquete y Binarios (macOS)

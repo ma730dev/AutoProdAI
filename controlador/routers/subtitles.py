@@ -32,6 +32,12 @@ from routers.video_looper import (
     CREATE_NO_WINDOW
 )
 
+try:
+    from services.audio_subtitles_pipeline import procesar_subtitulado_musical_completo
+except ImportError:
+    procesar_subtitulado_musical_completo = None
+
+
 router = APIRouter(
     prefix="/subtitles",
     tags=["subtitles"],
@@ -392,6 +398,7 @@ class SubtitlesGenerateRequest(BaseModel):
     target_type: str = "video"                   # "video" | "songs_folder"
     path: str
     channel_name: Optional[str] = None
+    lyrics_text: Optional[str] = None            # Letra oficial (Modo Asistido 0% WER con CTC Viterbi Trellis)
     engine: str = "local_cpu"                    # "local_cpu" | "local_gpu" | "openai_api"
     language: str = "es"                         # "es" | "en" | "auto"
     formats: List[str] = [".srt", ".vtt", ".json"]
@@ -460,6 +467,24 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
 
             is_song_file = is_folder or file_item.suffix.lower() in {".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg", ".wma"}
 
+            # Buscar letra oficial (en la petición o en archivo homónimo .txt / .lyrics)
+            lyrics_content = req.lyrics_text
+            if not lyrics_content:
+                txt_candidate = file_item.with_suffix(".txt")
+                lyrics_candidate = file_item.with_name(f"{file_item.stem}.lyrics")
+                if txt_candidate.exists():
+                    try:
+                        with open(txt_candidate, "r", encoding="utf-8") as lf:
+                            lyrics_content = lf.read().strip()
+                    except Exception:
+                        pass
+                elif lyrics_candidate.exists():
+                    try:
+                        with open(lyrics_candidate, "r", encoding="utf-8") as lf:
+                            lyrics_content = lf.read().strip()
+                    except Exception:
+                        pass
+
             # 1. Extraer / optimizar audio con separación acústica vocal
             SUB_JOBS[job_id]["message"] = f"Optimizando audio para {file_item.name}..."
             opt_audio = extract_optimized_audio(file_item, temp_dir, f"{job_id}_{idx}", is_cloud_api=(req.engine == "openai_api"), is_song=is_song_file)
@@ -481,45 +506,68 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
                 safe_threads = opt_config["threads"]
                 chosen_model = opt_config["model_size"]
                 profile_desc = opt_config["description"]
-                
-                try:
-                    SUB_JOBS[job_id]["message"] = f"Transcribiendo ({chosen_model.upper()} en {device.upper()} con {safe_threads} hilo(s) - {profile_desc}): {file_item.name}..."
-                    transcription_data = transcribe_faster_whisper(
-                        opt_audio,
-                        language=req.language,
-                        device=device,
-                        safe_threads=safe_threads,
-                        model_size=chosen_model,
-                        is_song=is_song_file
-                    )
-                except ImportError:
-                    # Si faster-whisper no está instalado, intentar CLI de whisper clásico
-                    whisper_bin = shutil.which("whisper")
-                    if whisper_bin:
-                        cmd = [
-                            whisper_bin,
-                            str(opt_audio),
-                            "--model", "base",
-                            "--output_dir", str(temp_dir),
-                            "--output_format", "all",
-                            "--threads", str(safe_threads),
-                            "--device", device
-                        ]
-                        if req.language and req.language != "auto":
-                            cmd.extend(["--language", req.language])
 
-                        SUB_JOBS[job_id]["message"] = f"Transcribiendo con Whisper CLI ({device.upper()}): {file_item.name}..."
-                        subprocess.run(cmd, capture_output=True, check=True, stdin=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
-                        
-                        json_out = temp_dir / f"{opt_audio.stem}.json"
-                        if json_out.exists():
-                            with open(json_out, "r", encoding="utf-8") as f:
-                                transcription_data = json.load(f)
-                    elif api_key:
-                        SUB_JOBS[job_id]["message"] = f"Faster-Whisper no detectado, usando OpenAI API: {file_item.name}..."
-                        transcription_data = call_openai_whisper(opt_audio, api_key, req.language)
-                    else:
-                        raise Exception("Faster-Whisper no está instalado en el entorno local. Ejecuta: pip install faster-whisper")
+                # Intentar pipeline neuronal de doble vía si es canción o hay letra provista
+                used_pipeline = False
+                if procesar_subtitulado_musical_completo and (is_song_file or lyrics_content):
+                    try:
+                        if lyrics_content:
+                            SUB_JOBS[job_id]["message"] = f"Alineando letra con precisión acústica (Forced Alignment CTC Viterbi): {file_item.name}..."
+                        else:
+                            SUB_JOBS[job_id]["message"] = f"Aislando voz con HTDemucs y transcribiendo: {file_item.name}..."
+
+                        pipeline_res = procesar_subtitulado_musical_completo(
+                            audio_path=file_item,
+                            lyrics_text=lyrics_content,
+                            language=req.language,
+                            device=device,
+                            threads=safe_threads,
+                            temp_dir=temp_dir
+                        )
+                        transcription_data = pipeline_res
+                        used_pipeline = True
+                    except Exception as pe:
+                        SUB_JOBS[job_id]["message"] = f"Pipeline neuronal reportó aviso ({pe}), ejecutando fallback directo..."
+
+                if not used_pipeline:
+                    try:
+                        SUB_JOBS[job_id]["message"] = f"Transcribiendo ({chosen_model.upper()} en {device.upper()} con {safe_threads} hilo(s) - {profile_desc}): {file_item.name}..."
+                        transcription_data = transcribe_faster_whisper(
+                            opt_audio,
+                            language=req.language,
+                            device=device,
+                            safe_threads=safe_threads,
+                            model_size=chosen_model,
+                            is_song=is_song_file
+                        )
+                    except ImportError:
+                        # Si faster-whisper no está instalado, intentar CLI de whisper clásico
+                        whisper_bin = shutil.which("whisper")
+                        if whisper_bin:
+                            cmd = [
+                                whisper_bin,
+                                str(opt_audio),
+                                "--model", "base",
+                                "--output_dir", str(temp_dir),
+                                "--output_format", "all",
+                                "--threads", str(safe_threads),
+                                "--device", device
+                            ]
+                            if req.language and req.language != "auto":
+                                cmd.extend(["--language", req.language])
+
+                            SUB_JOBS[job_id]["message"] = f"Transcribiendo con Whisper CLI ({device.upper()}): {file_item.name}..."
+                            subprocess.run(cmd, capture_output=True, check=True, stdin=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+                            
+                            json_out = temp_dir / f"{opt_audio.stem}.json"
+                            if json_out.exists():
+                                with open(json_out, "r", encoding="utf-8") as f:
+                                    transcription_data = json.load(f)
+                        elif api_key:
+                            SUB_JOBS[job_id]["message"] = f"Faster-Whisper no detectado, usando OpenAI API: {file_item.name}..."
+                            transcription_data = call_openai_whisper(opt_audio, api_key, req.language)
+                        else:
+                            raise Exception("Faster-Whisper no está instalado en el entorno local. Ejecuta: pip install faster-whisper")
 
             # Limpiar archivo temporal de audio si se creó uno nuevo
             if opt_audio != file_item and opt_audio.exists():
@@ -547,15 +595,21 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
             with open(vtt_path, "w", encoding="utf-8") as f:
                 f.write(vtt_content)
 
-            # Guardar JSON con timestamps
+            # Guardar JSON con timestamps y forma de onda
+            json_payload = {
+                "track_name": file_item.name,
+                "language": transcription_data.get("language", req.language),
+                "duration": transcription_data.get("duration", 0.0),
+                "text": raw_text,
+                "segments": segments
+            }
+            if "waveform" in transcription_data:
+                json_payload["waveform"] = transcription_data["waveform"]
+            if "modo" in transcription_data:
+                json_payload["modo"] = transcription_data["modo"]
+
             with open(json_path, "w", encoding="utf-8") as f:
-                json.dump({
-                    "track_name": file_item.name,
-                    "language": transcription_data.get("language", req.language),
-                    "duration": transcription_data.get("duration", 0.0),
-                    "text": raw_text,
-                    "segments": segments
-                }, f, indent=2, ensure_ascii=False)
+                json.dump(json_payload, f, indent=2, ensure_ascii=False)
 
             result_entry = {
                 "file_name": file_item.name,
@@ -565,6 +619,10 @@ def run_subtitles_worker(job_id: str, req: SubtitlesGenerateRequest):
                 "segments_count": len(segments),
                 "text_snippet": raw_text[:140] + ("..." if len(raw_text) > 140 else "")
             }
+            if "waveform" in transcription_data:
+                result_entry["waveform"] = transcription_data["waveform"]
+            if "modo" in transcription_data:
+                result_entry["modo"] = transcription_data["modo"]
 
             SUB_JOBS[job_id]["results"].append(result_entry)
             SUB_JOBS[job_id]["processed_tracks"] += 1

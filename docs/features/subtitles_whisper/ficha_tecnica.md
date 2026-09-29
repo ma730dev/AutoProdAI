@@ -1,38 +1,45 @@
-# ⚙️ Ficha Técnica: Subtitulador Whisper & Hardware Governor
+# ⚙️ Ficha Técnica: Subtitulador Musical de Doble Vía (HTDemucs + CTC Viterbi Trellis / Whisper)
 
 > **Ruta:** `docs/features/subtitles_whisper/ficha_tecnica.md`  
 > **Estado:** `✅ HECHO` (En producción / Operativo)  
-> **Capa Técnica:** Python FastAPI (Puerto 8000) + Faster-Whisper Large-v3-Turbo (CTranslate2 Local INT8 / CUDA FP16) + Aislamiento Acústico Centro + Segmentación Rítmica CapCut + FFmpeg + Next.js
+> **Capa Técnica:** Python FastAPI (Puerto 8000) + HTDemucs (Separación Acústica Neuronal 1:1) + Torchaudio MMS-FA / Wav2Vec 2.0 (CTC Viterbi Trellis 0% WER) + Faster-Whisper Large-v3-Turbo + Ajuste Reactivo Visual (-40ms) + Timeline Waveform Canvas + FFmpeg + Next.js
 
 ---
 
-## 🛠️ 1. Pipeline de Procesamiento de Audio & Transcripción
+## 🛠️ 1. Pipeline de Procesamiento de Audio & Transcripción de Doble Vía
 
 ```mermaid
 flowchart TD
-    A[Video / Carpeta Canciones] --> B[Aislamiento Acústico Centro vía FFmpeg]
-    B -->|Canciones: Center Vocal Pan + Bandpass 90Hz-8kHz| C{Tipo de Audio}
-    C -->|Música / Canciones| D1[VAD Desactivado + No-Speech 0.60 + Beam Size 5]
-    C -->|Voz / Diálogos| D2[Silero VAD: Voice Activity Detection]
-    D1 --> E[Faster-Whisper Local: Large-v3-Turbo CTranslate2 INT8/FP16]
-    D2 --> E
-    E -->|Word-Level Timestamps con Probabilidad| F[Segmentador Rítmico Estilo CapCut]
-    F -->|Agrupación 3-5 palabras + Detección de Silencios >0.40s| G[Generador de Formatos]
-    G --> H1[.srt: Bloques rítmicos para CapCut & Editores NLE]
-    G --> H2[.vtt: Web & YouTube Captions]
-    G --> H3[.json: Timeline estructurado palabra por palabra]
-    G -->|Opcional: FFmpeg Burn| I[Video con Subtítulos Quemados]
+    A[Video / Carpeta Canciones] --> B[Aislamiento Acústico Neuronal: HTDemucs]
+    B -->|vocals_16k.wav duración 1:1 con silencio digital| C{¿Hay Letra Provista?}
+    
+    C -->|SÍ: Letra Oficial / Modo Asistido| D1[Alineador Acústico: Torchaudio MMS-FA / Wav2Vec 2.0]
+    D1 -->|CTC Viterbi Trellis: 0% WER y Paridad Lírica 100%| E[Timestamps Milimétricos por Palabra]
+    
+    C -->|NO: Modo Automático| D2[Faster-Whisper: Large-v3-Turbo CTranslate2]
+    D2 -->|vad_filter=True + condition_on_prev=False + no_speech=0.6| E
+    
+    E --> F[Capa Post-Proceso: Ajuste Reactivo Visual -40ms & Anti-Overlap]
+    B -.->|Extracción de Envolvente Acústica| G[Waveform Peaks JSON para Timeline Canvas]
+    
+    F --> H1[.srt: Bloques rítmicos para CapCut & Editores NLE]
+    F --> H2[.vtt: Web & YouTube Captions]
+    F --> H3[.json: Timeline estructurado palabra por palabra con forma de onda]
+    F -->|Opcional: FFmpeg Burn| I[Video con Subtítulos Quemados]
+    
+    H1 --> J[Bloque Finally: Eliminación de vocals.wav y flush VRAM]
 ```
 
 ---
 
-## 🎵 2. Optimizaciones Especializadas para Canciones y Letras Líricas
+## 🎵 2. Optimizaciones Especializadas para Música y Letras Líricas
 
-Para resolver la pérdida de palabras y las alucinaciones en canciones con instrumentales pesados, se implementaron cuatro capas de procesamiento:
-1. **Aislamiento Acústico de Voz en Centro Estéreo:** En vez de mezclar ciegamente o usar normalizadores dinámicos agresivos (`dynaudnorm`, que subían el volumen de los instrumentos hasta 15 dB durante los silencios del cantante), se utiliza un filtro estéreo central `pan=mono|c0=0.5*c0+0.5*c1` junto con filtrado pasa-altos a 90 Hz y pasa-bajos a 8 kHz, enfocando la energía acústica en el rango de los formantes vocales humanos.
-2. **Desactivación de Silero VAD en Música:** Silero VAD está entrenado en lenguaje hablado. En canciones, clasifica erróneamente notas sostenidas y melodías como ruido de fondo, cortando versos enteros antes de que lleguen a Whisper. Al desactivarlo en canciones e incrementar el umbral de `no_speech_threshold` a `0.60`, el transcriptor escucha cada compás sin recortes.
-3. **Motor Local Large-v3-Turbo (1,550M Parámetros):** Reemplazo del modelo liviano `small`/`base` por el modelo insignia de OpenAI `large-v3-turbo` cuantizado en INT8 (vía CTranslate2). Utiliza 4x menos VRAM y RAM que el PyTorch original, permitiendo ejecutar la máxima precisión de OpenAI al 100% en local y a $0 costo.
-4. **Segmentador Rítmico Dinámico Estilo CapCut (`format_capcut_rhythmic_segments`):** En lugar de generar párrafos extensos de 15 a 30 segundos, agrupa las palabras en bloques ágiles de 3 a 5 palabras, dividiendo los subtítulos cuando detecta una pausa lírica superior a 400 milisegundos (`max_pause_sec = 0.40`) o signos de puntuación clave.
+Para resolver la pérdida de palabras, las alucinaciones en compases instrumentales y el desfase biológico de lectura, se implementaron cuatro capas de procesamiento:
+1. **Aislamiento Acústico Neuronal (HTDemucs):** Extrae la pista de voz a capela pura (`vocals.wav`). Los instrumentos se transforman en **silencio digital puro (0 dBFS)** manteniendo la duración 1:1 estricta del audio original sin desfasar el video maestro.
+2. **Modo Asistido con CTC Viterbi Trellis (`torchaudio.pipelines.MMS_FA`):** Si el creador proporciona la letra oficial, se bypasea Whisper por completo. El modelo fonético acústico calcula en qué milisegundo exacto de la onda limpia ocurre cada palabra, garantizando **0% de errores léxicos (0% WER) y 100% de paridad lírica**.
+3. **Modo Automático Anti-Alucinaciones (Faster-Whisper Large-v3-Turbo):** Ejecutado sobre el acapela limpio con `vad_filter=True`, `min_silence_duration_ms=1000`, `condition_on_previous_text=False` y `no_speech_threshold=0.60`. Ignora los solos instrumentales sin generar bucles de texto fantasma.
+4. **Capa de Ajuste Reactivo Visual (-40ms) & Anti-Overlap:** Resta 40 ms al inicio de cada subtítulo para compensar la latencia visual humana y resuelve colisiones para que ninguna palabra solape el inicio de la siguiente.
+5. **Forma de Onda en Timeline Canvas:** Genera un array de amplitudes normalizadas (`waveform`) de <50 KB para renderizar los picos acústicos de voz en el componente `TimelinePro`.
 
 ---
 
@@ -41,10 +48,11 @@ Para resolver la pérdida de palabras y las alucinaciones en canciones con instr
 | Endpoint | Método | Parámetros Clave | Descripción |
 |---|:---:|---|---|
 | `/subtitles/estimate` | `POST` | `{ path, target_type, engine }` | Evalúa la duración total del audio y el hardware disponible para estimar tiempo de ejecución. |
-| `/subtitles/generate` | `POST` | `{ path, target_type, engine, language, formats, burn_to_video }` | Inicia el pipeline de extracción acústica, Faster-Whisper y guardado de archivos. |
+| `/subtitles/generate` | `POST` | `{ path, target_type, lyrics_text, engine, language, formats, burn_to_video }` | Inicia el pipeline de HTDemucs, doble vía (Asistido/Automático), ajuste reactivo y guardado. |
 | `/subtitles/status/{job_id}` | `GET` | `job_id` en path | Emite el progreso en tiempo real (`progress`, `current_track`, `results`, `status`). |
 | `/subtitles/preview_file` | `GET` | `path` en query | Lee el contenido de un archivo `.srt`, `.vtt` o `.json` para renderizarlo en el editor web. |
 | `/subtitles/save_file` | `POST` | `{ path, content }` | Guarda modificaciones manuales de texto o marcas de tiempo realizadas en la UI. |
+
 
 ---
 

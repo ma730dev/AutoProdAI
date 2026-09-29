@@ -703,6 +703,7 @@ export class ControladorClient {
     targetType: 'video' | 'songs_folder';
     path: string;
     channelName?: string;
+    lyricsText?: string;
     engine?: string;
     language?: string;
     formats?: string[];
@@ -716,6 +717,7 @@ export class ControladorClient {
           target_type: params.targetType,
           path: params.path,
           channel_name: params.channelName || null,
+          lyrics_text: params.lyricsText || null,
           engine: params.engine || 'openai_api',
           language: params.language || 'es',
           formats: params.formats || ['.srt', '.vtt', '.json'],
