@@ -34,7 +34,7 @@ No asumas la arquitectura. Navega a `docs/index.md`, lee el contexto de tu tarea
 - **Sincronización con Prisma:** Cualquier cambio en tablas o modelos SQL debe replicarse inmediatamente en `prisma/schema.prisma` y ejecutarse `pnpm exec prisma generate`.
 
 ### 5. DEFINICIÓN DE PRODUCTO Y TONO DE VOZ (CERO HUMO, CERO TECNICISMOS)
-- **Definición Oficial:** AutoProd es el **sistema operativo para canales de contenido**. Un espacio donde los creadores organizan sus proyectos, desarrollan ideas con intención, producen con sus propios recursos, analizan resultados y construyen un workflow que se adapta a su forma de crear.
+- **Definición Oficial:** AutoProd es el **sistema operativo para proyectos de contenido** (un proyecto puede ser un canal, serie, marca o línea editorial; YouTube es un destino de publicación opcional, no la definición del producto). Un espacio donde los creadores organizan sus proyectos, desarrollan ideas con intención, producen con sus propios recursos, analizan resultados y construyen un workflow que se adapta a su forma de crear.
 - **Manifiesto de Marca:** *«La automatización no reemplaza al creador. Le devuelve tiempo para crear.»* | *«Automatiza el trabajo. Conserva el control.»*
 - **Los 4 Pilares:** `CREA` • `PRODUCE` • `ANALIZA` • `ESCALA`.
 - **Diferencial de Ejecución:** *«Tu contenido. Tu equipo. Tu control»* (velocidad nativa, costo predecible y soberanía absoluta sobre los archivos).

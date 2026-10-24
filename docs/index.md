@@ -6,8 +6,10 @@ Si estás leyendo esto, es porque has sido instruido a consultar el contexto del
 ## 🧠 ¿Cómo entender este repositorio?
 
 > **Definición Oficial de Producto:**  
-> **AutoProd es el sistema operativo para canales de contenido.**  
-> Un espacio donde los creadores y operadores de canales organizan sus proyectos, desarrollan ideas, producen contenido con sus propios recursos, analizan resultados y construyen un workflow que se adapta a su forma de crear.
+> **AutoProd es el sistema operativo para proyectos de contenido.**  
+> Un espacio donde los creadores organizan sus proyectos, desarrollan ideas, producen contenido con sus propios recursos, analizan resultados y construyen un workflow que se adapta a su forma de crear.
+>
+> *Un proyecto puede ser un canal, una serie, una marca o una línea editorial. YouTube es un destino de publicación posible, no la definición del producto. Los identificadores técnicos (`crear_canal`, `InfoCanal/`, modelo `Channel`) se conservan por compatibilidad; en el lenguaje al usuario y a los prompts se habla de «proyecto».*
 
 > **Manifiesto:**  
 > *«La automatización no reemplaza al creador. Le devuelve tiempo para crear.»*  
