@@ -1,113 +1,131 @@
-# 🔧 Catálogo de Funciones y Herramientas del Sistema (AutoProd)
+# 🔧 Catálogo de Herramientas y Dominios Operativos (AutoProd)
 
-> **Propósito de este documento:** Referencia técnica del catálogo de herramientas, sub-agentes y funciones que el Orquestador puede invocar. Si durante una conversación **el usuario menciona una capacidad o idea que no existe aún en este catálogo**, el agente de IA debe:
+> **Propósito de este documento:** Referencia técnica del catálogo de herramientas unificadas por dominios, rutas Fast-Path y funciones ejecutables que el Orquestador Central (`app/api/chat/route.ts`) puede invocar. Si durante una conversación **el usuario menciona una capacidad o idea que no existe aún en este catálogo**, el agente de IA debe:
 > 1. Identificar que la función aún no está implementada.
-> 2. Preguntarle al usuario si desea gestionar esa idea (crear una tarjeta en el Master Tracker o crear la carpeta en `docs/features/`).
+> 2. Preguntarle al usuario si desea registrarla como idea en el [Master Feature Tracker](file:///e:/autoprod/docs/features/README.md).
 > 3. No improvisar ni asumir que existe.
 
 ---
 
-## 🧠 1. Protocolo de Ejecución Agéntica (Function Calling)
+## 🏛️ 1. Filosofía de Operación: Espacios de Trabajo, Carpetas y Archivos
 
-El Orquestador opera mediante **Function Calling nativo** del Vercel AI SDK:
-
-1. El usuario envía un mensaje al chat.
-2. `app/api/chat/route.ts` consulta en Prisma el Agente `Orchestrator` (`isOrchestrator: true`) y carga sus `Tools`.
-3. Se construye un System Prompt dinámico inyectando `contextRules` del canal si se provee `channelId`.
-4. Los JSON Schemas de herramientas se convierten al formato Zod vía `jsonSchema()` de `ai-core`.
-5. El LLM decide si usar herramientas. Si las usa, el SDK ejecuta el bloque `execute` (fetch al Motor Python) y devuelve el resultado al LLM.
-6. El LLM genera la respuesta final con `generateText` con `maxSteps: 5`.
+AutoProd es el **sistema operativo para creadores de contenido**. Opera bajo una filosofía abierta y versátil donde:
+- Toda producción se basa en el **control soberano de archivos y carpetas locales** (`workspace_control`).
+- El usuario puede crear carpetas para canales, proyectos de video, podcast o cualquier tipo de producción audiovisual que desee sin restricciones artificiales ni rigideces de nomenclatura.
+- El Orquestador Central utiliza **Domain Tool Retrieval** (filtrado inteligente por dominios) para dotar al modelo únicamente de las herramientas que necesita según la intención del usuario, reduciendo consumo de tokens y eliminando llamadas accidentales a disco.
 
 ---
 
-## 🔌 2. Herramientas Primitivas (Motor Local Python `localhost:8000`)
-
-Herramientas de bajo nivel registradas en el catálogo de Prisma:
-
-| Slug | Descripción | Endpoint Python | Estado |
-|---|---|---|:---:|
-| `workspace_list` | Lista recursiva del árbol de archivos hasta 4 niveles | `GET /workspace/?base_path={path}` | `✅ ACTIVA` |
-| `workspace_read` | Lee contenido de un archivo (máx 8000 chars) | `GET /workspace/file?path={fullPath}` | `✅ ACTIVA` |
-| `workspace_write` | Guarda o sobrescribe un archivo | `POST /workspace/file` | `✅ ACTIVA` |
-| `workspace_delete` | Elimina un archivo del proyecto | `DELETE /workspace/file?path={fullPath}` | `✅ ACTIVA` |
-| `crear_carpetas` | Crea canal y subcarpetas en bloque | `POST /workspace/create` | `✅ ACTIVA` |
-| `eliminar_carpetas` | Elimina una o varias carpetas | `POST /workspace/delete_folder` | `✅ ACTIVA` |
-| `extraer_canal_youtube` | Extrae metadatos y contexto vectorial de un canal de YouTube | `/api/tools/extraer_canal_youtube` | `✅ ACTIVA` |
-| `tts_voices` | Lista voces disponibles de Edge-TTS y OpenAI | `GET /tts/voices` | `✅ ACTIVA` |
-| `tts_preview` | Preescucha en streaming Base64 de muestras de audio | `POST /tts/preview` | `✅ ACTIVA` |
-| `tts_generate` | Generación y guardado directo de locución en disco | `POST /tts/generate` | `✅ ACTIVA` |
-
----
-
-## ⚡ 3. Herramientas de Alto Nivel del Orquestador (`/api/tools/`)
-
-Herramientas especializadas invocadas autónomamente por el Orquestador central mediante Function Calling:
-
-| Slug | Nombre | Endpoint | Descripción | Estado |
-|---|---|---|---|:---:|
-| `consultar_prompts` | Consultor de SOPs y Plantillas | `/api/tools/prompts` | Permite al cerebro consultar guías operativas, plantillas y taxonomía de carpetas bajo demanda | `✅ ACTIVA` |
-| `crear_canal` | Creador e Inicializador de Canales | `/api/tools/crear_canal` | Valida límites de plan, registra en BD y crea `InfoCanal/` con `Contexto_canal.md`, `Metricas_canal.md`, `Historial_canal.md`, `Branding_canal.md` | `✅ ACTIVA` |
-| `generar_info_canal` | Alias Retrocompatible de `crear_canal` | `/api/tools/generar_info_canal` | Delega a `crear_canal` para compatibilidad de interfaces previas | `✅ ACTIVA` |
-| `generar_locucion` | Generador de Locución y Voz en Off | `/api/tools/generar_locucion` | Genera narraciones con Edge-TTS ($0) u OpenAI con control de créditos | `✅ ACTIVA` |
-| `estado_sistema` | Verificador de Diagnóstico | `/api/tools/estado_sistema` | Reporta dependencias locales instaladas (FFmpeg, Python, Node) | `✅ ACTIVA` |
-
----
-
-## 🎛️ 4. Herramientas Planificadas (No Implementadas)
-
-> **⚠️ IMPORTANTE PARA AGENTES:** Si el usuario solicita alguna de las siguientes capacidades, esta **NO existe aún**. Debes notificarlo y preguntar si quiere que la gestionemos creando una entrada en el [Master Feature Tracker](file:///e:/autoprod/docs/features/README.md).
-
-| Capacidad | Área | Estado | Referencia |
-|---|---|:---:|---|
-| Subida directa de video a YouTube (OAuth + Upload API v3) | Integración YouTube | `📋 PLANIFICADO` | [Idea](file:///e:/autoprod/docs/features/youtube_channel_extractor/idea.md) |
-| Editor/Parseador visual de `config_subida.md` | Frontend | `📋 PLANIFICADO` | — |
-| Calendario de publicación y cron automatizado | Scheduler | `📋 PLANIFICADO` | [Idea](file:///e:/autoprod/docs/features/README.md) |
-| Expansión TTS Hiperrealista (ElevenLabs & Cartesia) | Multimedia | `💡 IDEA` | [Idea](file:///e:/autoprod/docs/features/text_to_speech/idea.md) |
-| Render batch nocturno en cola | Multimedia | `💡 IDEA` | — |
-| Auto-corte a YouTube Shorts / TikTok (9:16) | Multimedia | `💡 IDEA` | — |
-| Agente A/B Testing de Miniaturas | IA Agéntica | `💡 IDEA` | — |
-| Dashboard de Analíticas de YouTube | Integración YouTube | `💡 IDEA` | — |
-| Webhooks de alerta a Discord / Telegram | Notificaciones | `💡 IDEA` | — |
-| Modo Agencia y Multi-Canal con roles | SaaS | `💡 IDEA` | — |
-| App de Escritorio Todo-en-Uno (Tauri / Electron) | Distribución UI | `💡 IDEA` | — |
-
----
-
-## 📋 5. Protocolo de Gestión de Ideas para Agentes
-
-Cuando el usuario mencione algo que **no está en las herramientas activas** de la sección 2 y 3:
+## ⚡ 2. El Flujo de Decisión en 2 Capas (System 1 + System 2)
 
 ```
-1. Identificar que la capacidad no existe en el catálogo actual.
-2. Informar al usuario: "Esa funcionalidad no está implementada aún."
-3. Preguntar: "¿Quieres que la registremos como una idea en el Master Tracker?"
-4. Si acepta → crear la entrada en docs/features/README.md (sección Backlog)
-   y opcionalmente crear la carpeta docs/features/{slug}/ con idea.md.
-5. NO improvisar código ni asumir que existe un endpoint para ello.
+[ Mensaje del Usuario ]
+           │
+           ▼
+┌──────────────────────────────────────┐
+│     1. Router Semántico (System 1)    │  < 15ms, Embeddings HNSW + Heurística
+└──────────────────┬───────────────────┘
+                   │
+         ¿Es Fast-Path directo?
+        ┌──────────┴──────────┐
+       SÍ                     NO
+        │                      │
+        ▼                      ▼
+┌──────────────┐     ┌──────────────────────────────────────────────┐
+│  FAST-PATH   │     │      2. Orquestador / LLM (System 2)         │
+│  0 tokens    │     │  - Inyección selectiva por dominio           │
+│  < 15ms      │     │  - GPT-4o-mini con herramientas filtradas    │
+│  Respuesta   │     └──────────────────────┬───────────────────────┘
+│  Directa     │                            │
+└──────────────┘             ¿Requiere acción en el sistema?
+                                    ┌───────┴───────┐
+                                   SÍ               NO
+                                    │                │
+                                    ▼                ▼
+                       ┌─────────────────────────┐  ┌──────────────┐
+                       │ Invocación HTTP a Tool  │  │ Respuesta de │
+                       │ /api/tools/[dominio]    │  │ Orientación  │
+                       └─────────────────────────┘  └──────────────┘
 ```
 
----
-
-## 📁 6. ContextManager — Inyección de Reglas de Canal
-
-Implementado en [`lib/agents/context-manager.ts`](file:///e:/autoprod/lib/agents/context-manager.ts):
-
-**Reglas Globales** (desde raíz del workspace):
-- `PROMPT_OPTIMIZADOR_SEO.md` — Reglas de SEO y formato de títulos/descripciones.
-- `PLANTILLA_DESCRIPCIONES.md` — Plantilla estándar de descripciones de YouTube.
-
-**Reglas de Canal** (desde carpeta del canal):
-- `.autoprod_channel.md` — Nicho, tono, público objetivo y restricciones específicas del canal.
-- Se inyectan en el System Prompt cuando hay un `channelId` activo.
+### Rutas Rápidas (Fast-Paths de 0 Tokens):
+1. **`capacidades_sistema` (`< 15ms`):** Responde de inmediato consultas de bienvenida, qué puede hacer AutoProd y estado general, listando los 4 pilares (`CREA`, `PRODUCE`, `ANALIZA`, `ESCALA`) y los canales físicos en disco sin tocar LLMs ni arriesgar errores 404.
+2. **`listar_canales_disco`:** Inspección en tiempo real del directorio raíz del workspace.
+3. **`consultar_proyecto_video`:** Consulta del proyecto en curso en la base de datos.
+4. **`listar_proyectos_recientes`:** Historial de proyectos de video activos.
+5. **`estado_sistema`:** Verificación de conectividad del motor local FastAPI (`localhost:8000`).
 
 ---
 
-## 📝 7. Plantillas de Prompt del Sistema
+## 🔌 3. Los 4 Endpoints Unificados por Dominio (`app/api/tools/`)
 
-| Nombre | Propósito |
-|---|---|
-| `orchestrator_base` | SOP del orquestador: explorar antes de actuar, no inventar rutas. |
-| `tool_injection` | Instrucción post-resultado de herramienta: evaluar, pedir contexto o responder. |
-| `crear_canal` | Template para configurar y planificar un canal de YouTube. |
-| `crear_video` | Template de planeación de carpetas y metadata de video. |
-| `crear_guion` | Template para escritura de guiones escena por escena en Markdown. |
+En lugar de docenas de endpoints sueltos, AutoProd consolida sus herramientas en **4 dominios temáticos unificados con despachadores de acciones (`action`)**:
+
+### 1. `workspace_control` (`/api/tools/workspace_control`)
+Control absoluto y soberano del disco y sistema de archivos.
+
+| Acción (`action`) | Parámetros | Descripción |
+|---|---|---|
+| `listar` | `path` | Inspección segura de directorios (retorna `{ exists: false }` si no existe, sin errores 404). |
+| `crear_carpetas` | `paths: string[]` | Creación de directorios en bloque (canales, proyectos de video, carpetas modulares) con límites por plan. |
+| `eliminar_carpetas` | `paths: string[]` | Eliminación segura de carpetas en disco con protección de carpetas reservadas. |
+| `leer_archivo` | `path` | Lectura de guiones, configuraciones y archivos de texto (máx 8000 caracteres). |
+| `guardar_archivo` | `path`, `content`, `overwrite` | Escritura atómica de guiones, ideas o configuraciones. |
+| `default` | — | Información del workspace predeterminado configurado. |
+
+---
+
+### 2. `system_control` (`/api/tools/system_control`)
+Diagnóstico local, directivas de producción y capacidades.
+
+| Acción (`action`) | Parámetros | Descripción |
+|---|---|---|
+| `estado_sistema` | — | Diagnóstico de salud del motor local FastAPI en el puerto 8000 y workspace. |
+| `consultar_prompts` | `tipo_prompt`, `categoria` | Carga dinámica de SOPs y directivas desde `PromptTemplate` sin hardcoding. |
+| `capacidades` | — | Resumen de los 4 pilares operativos de AutoProd. |
+
+---
+
+### 3. `creative_studio` (`/api/tools/creative_studio`)
+Estudio de producción multimedia y activos creativos.
+
+| Acción (`action`) | Parámetros | Descripción |
+|---|---|---|
+| `generar_locucion` | `texto`, `voz` | Síntesis de narraciones y voces en off profesionales con control de créditos. |
+| `generar_imagen` | `prompt`, `aspect_ratio`, `tipo`, `channel_name`, `video_title` | Generación de miniaturas (16:9), portadas y assets con DALL-E 3 guardados en el workspace. |
+
+---
+
+### 4. `channel_memory` (`/api/tools/channel_memory`)
+Memoria contextual, ADN de audiencia e investigación de mercado.
+
+| Acción (`action`) | Parámetros | Descripción |
+|---|---|---|
+| `extraer_canal_youtube` | `url_o_handle` | Extracción de metadatos, tags y estadísticas de referencia de YouTube vía yt-dlp. |
+| `leer_memoria_canal` | `channel_name`, `seccion` | Lectura de la memoria viva local (`InfoCanal/`: `Contexto_canal.md`, `Metricas_canal.md`, `Historial_canal.md`). |
+
+---
+
+## 🎯 4. Tabla de Mapeo de Dominios en el Router Semántico
+
+| Dominio | Herramientas Inyectadas | Modo Operativo |
+|---|---|---|
+| `WORKSPACE_FS` | `workspace_control`, `system_control` | Control de archivos, creación de carpetas y proyectos |
+| `VIDEO_PROJECT` | `workspace_control`, `system_control` | Producción de video, timeline, guiones |
+| `CREATIVE_STUDIO` | `creative_studio`, `workspace_control`, `system_control` | Locución, miniaturas y diseño |
+| `CHANNEL_MEMORY` | `channel_memory`, `workspace_control`, `system_control` | Identidad, métricas de YouTube y memoria |
+| `SYSTEM` | `system_control` | Diagnóstico, SOPs y consultas del sistema |
+| *Modo Asesor (Sin Match)* | `system_control` | Modo conversacional seguro (Cero herramientas de disco) |
+
+---
+
+## 📋 5. Protocolo de Gestión de Nuevas Ideas
+
+Cuando el usuario mencione una funcionalidad o capacidad que no existe en estos 4 dominios:
+```
+1. Notificar claramente que la capacidad no está disponible actualmente.
+2. Preguntar si desea registrarla en el Master Feature Tracker (docs/features/README.md).
+3. Si el usuario aprueba, documentar en docs/features/{nombre_feature}/ separando
+   ficha_tecnica.md e idea.md, y actualizar el Master Tracker.
+4. CERO invención de endpoints o atajos fuera de app/api/tools/.
+```

@@ -122,7 +122,8 @@ export async function POST(req: Request) {
       return response;
     }
 
-    const existingChannels: string[] = [];
+    const existingProjects: string[] = [];
+    const existingChannels = existingProjects; // Alias retrocompatible
 
     let apiKey = '';
     let requiredCredits = 0;
@@ -323,10 +324,10 @@ export async function POST(req: Request) {
                 const subPath = path.join(currentWorkspacePath, entry.name);
                 const hasInfoCanal = fs.existsSync(path.join(subPath, 'InfoCanal'));
 
-                // Solo se considera CANAL si no es una carpeta reservada y contiene InfoCanal/
-                if (!isReserved && hasInfoCanal) {
-                  if (!existingChannels.includes(entry.name)) {
-                    existingChannels.push(entry.name);
+                // Toda carpeta en el workspace (no reservada) es un proyecto
+                if (!isReserved) {
+                  if (!existingProjects.includes(entry.name)) {
+                    existingProjects.push(entry.name);
                   }
                 }
 
@@ -336,15 +337,15 @@ export async function POST(req: Request) {
                     .filter(e => !e.name.startsWith('.'))
                     .map(e => `${e.isDirectory() ? '📁' : '📄'} ${e.name}`);
                 } catch { /* ignorar errores de permisos */ }
-                structureLines.push(`• ${hasInfoCanal ? 'Canal' : 'Carpeta'} "${entry.name}": [${subDirs.join(', ') || 'vacío'}]`);
+                structureLines.push(`• Proyecto "${entry.name}"${hasInfoCanal ? ' (con memoria InfoCanal)' : ''}: [${subDirs.join(', ') || 'vacío'}]`);
               } else {
                 structureLines.push(`• Archivo en raíz: "${entry.name}"`);
               }
             }
             if (structureLines.length > 0) {
-              workspaceStructureSnapshot = `\n\n--- ESTADO ACTUAL DEL WORKSPACE EN DISCO (TIEMPO REAL) ---\nUbicación: ${currentWorkspacePath}\nCanales detectados físicamente (${existingChannels.length}): ${existingChannels.join(', ')}\nElementos detectados actualmente:\n${structureLines.join('\n')}\n(Usa esta lista como verdad absoluta de lo que existe físicamente en el disco duro del usuario al momento de responder. Si el usuario pregunta qué tiene o se refiere a un canal o carpeta, básate en este estado).`;
+              workspaceStructureSnapshot = `\n\n--- ESTADO ACTUAL DEL WORKSPACE EN DISCO (TIEMPO REAL) ---\nUbicación: ${currentWorkspacePath}\nProyectos detectados físicamente (${existingProjects.length}): ${existingProjects.join(', ')}\nElementos detectados actualmente:\n${structureLines.join('\n')}\n(Usa esta lista como verdad absoluta de lo que existe físicamente en el disco duro del usuario al momento de responder. Si el usuario pregunta qué tiene o se refiere a un proyecto o carpeta, básate en este estado).`;
             } else {
-              workspaceStructureSnapshot = `\n\n--- ESTADO ACTUAL DEL WORKSPACE EN DISCO (TIEMPO REAL) ---\nUbicación: ${currentWorkspacePath}\nEl workspace está actualmente vacío (sin canales ni archivos).`;
+              workspaceStructureSnapshot = `\n\n--- ESTADO ACTUAL DEL WORKSPACE EN DISCO (TIEMPO REAL) ---\nUbicación: ${currentWorkspacePath}\nEl workspace está actualmente vacío (sin proyectos ni archivos).`;
             }
           }
         } catch (scanErr: any) {
@@ -471,18 +472,19 @@ export async function POST(req: Request) {
 
         // ⚡ FAST-PATH: Despacho determinista de ultra-baja latencia sin LLM (< 150ms)
         if (semanticMatch.matched && semanticMatch.isDirectFastPath) {
-          // 1. Listar canales
-          if (semanticMatch.toolName === 'listar_canales') {
-            const channelListStr = existingChannels.length > 0
-              ? existingChannels.map(c => `• 📁 **${c}**`).join('\n')
-              : 'Actualmente no tienes canales creados en tu workspace.';
-            const fastText = `He consultado tu workspace en tiempo real:\n\n${channelListStr}\n\n¿Deseas seleccionar alguno para comenzar a producir un video o planificar guiones?`;
+          // 0. Capacidades y Bienvenida del Sistema (< 15ms, $0 tokens)
+          if (semanticMatch.toolName === 'capacidades_sistema') {
+            const projectListStr = existingProjects.length > 0
+              ? existingProjects.map(c => `• 📁 **${c}**`).join('\n')
+              : 'Actualmente no tienes carpetas creadas en tu workspace.';
+
+            const fastText = `¡Hola! Soy **AutoProd**, tu sistema operativo para organizar y producir contenido audiovisual. 🚀\n\nAquí tienes el control total sobre tus archivos y producciones:\n\n• **CREA:** Desarrolla ideas con intención, temas y guiones estructurados.\n• **PRODUCE:** Ensamble audiovisual, clips, bucles de video de 1 a 3 horas y subtítulos automáticos.\n• **ANALIZA:** Referencias de nicho, enfoques temáticos y memoria histórica de lo ya cubierto.\n• **ESCALA:** Gestión ordenada de carpetas y proyectos en tu propio disco duro.\n\n📂 **Tu Workspace activo:**\n\`${currentWorkspacePath}\`\n\n**Tus proyectos activos (${existingProjects.length}):**\n${projectListStr}\n\n¿En qué carpeta o proyecto te gustaría que trabajemos hoy?`;
 
             logIntentTelemetry({
               userId,
               rawQuery: userQueryText,
-              detectedDomain: semanticMatch.domain,
-              executedTool: 'listar_canales',
+              detectedDomain: 'SYSTEM',
+              executedTool: 'capacidades_sistema',
               wasFastPath: true,
               confidenceScore: semanticMatch.confidence,
               success: true
@@ -492,7 +494,43 @@ export async function POST(req: Request) {
               text: fastText,
               modelName: 'AutoProd',
               workspaceModified: false,
-              executedTools: ['listar_canales'],
+              executedTools: ['capacidades_sistema'],
+              isFastPath: true,
+              isDeepThinking: false,
+              newBalance: null,
+              channelId: activeChannel?.id,
+              channelName: activeChannel?.name,
+              detectedDomain: 'SYSTEM',
+              routerConfidence: semanticMatch.confidence
+            });
+          }
+
+          // 1. Listar proyectos y carpetas del workspace
+          if (
+            semanticMatch.toolName === 'listar_proyectos_workspace' ||
+            semanticMatch.toolName === 'listar_canales' ||
+            semanticMatch.toolName === 'listar_canales_disco'
+          ) {
+            const projectListStr = existingProjects.length > 0
+              ? existingProjects.map(c => `• 📁 **${c}**`).join('\n')
+              : 'Actualmente no tienes carpetas de proyectos creadas en tu workspace.';
+            const fastText = `He consultado tu workspace en tiempo real (\`${currentWorkspacePath}\`):\n\n${projectListStr}\n\n¿En cuál de estos proyectos te gustaría trabajar hoy, o deseas crear una nueva carpeta para otro proyecto?`;
+
+            logIntentTelemetry({
+              userId,
+              rawQuery: userQueryText,
+              detectedDomain: semanticMatch.domain,
+              executedTool: semanticMatch.toolName,
+              wasFastPath: true,
+              confidenceScore: semanticMatch.confidence,
+              success: true
+            });
+
+            return NextResponse.json({
+              text: fastText,
+              modelName: 'AutoProd',
+              workspaceModified: false,
+              executedTools: [semanticMatch.toolName],
               isFastPath: true,
               isDeepThinking: false,
               newBalance: null,
@@ -603,7 +641,7 @@ export async function POST(req: Request) {
               motorOnline = false;
             }
 
-            const fastText = `Diagnóstico del sistema AutoProd:\n\n• **Motor Local (FastAPI):** ${motorOnline ? '🟢 Online (puerto 8000)' : '🔴 Desconectado (inicia el motor para renderizar y usar TTS)'}\n• **Workspace:** \`${currentWorkspacePath}\`\n• **Canales detectados:** ${existingChannels.length} canal(es)\n• **Router Semántico (System 1):** ⚡ Activo (< 50ms)\n\n¿En qué podemos trabajar hoy?`;
+            const fastText = `Diagnóstico del sistema AutoProd:\n\n• **Motor Local (FastAPI):** ${motorOnline ? '🟢 Online (puerto 8000)' : '🔴 Desconectado (inicia el motor para renderizar y usar TTS)'}\n• **Workspace:** \`${currentWorkspacePath}\`\n• **Proyectos detectados:** ${existingProjects.length} proyecto(s)\n• **Router Semántico (System 1):** ⚡ Activo (< 50ms)\n\n¿En qué podemos trabajar hoy?`;
 
             logIntentTelemetry({
               userId,
@@ -768,8 +806,8 @@ TU CONDUCTA OBLIGATORIA:
           systemPrompt += channelSpecificDirective;
         } else {
           const generalCapabilitiesDirective = `\n\n=== CONTEXTO GENERAL DEL WORKSPACE ===
-- Canales detectados en tu workspace: ${existingChannels.length > 0 ? existingChannels.join(', ') : 'Ninguno aún'}.
-Si el usuario dice que desea crear o producir un video pero no ha especificado claramente para cuál de sus canales lo desea, pregúntale amablemente: "¿Para cuál de tus canales (${existingChannels.join(', ')}) te gustaría que preparemos este video?". En cuanto el usuario lo indique, utilizarás de inmediato su memoria y métricas para proponerle ideas ganadoras sin hacer preguntas en blanco.`;
+- Proyectos detectados en tu workspace: ${existingProjects.length > 0 ? existingProjects.join(', ') : 'Ninguno aún'}.
+Si el usuario dice que desea crear o producir un video pero no ha especificado claramente en cuál proyecto desea trabajar, pregúntale amablemente: "¿Para cuál de tus proyectos (${existingProjects.join(', ')}) te gustaría que preparemos este contenido?". En cuanto el usuario lo indique, procede a trabajar dentro de esa carpeta.`;
 
           systemPrompt += generalCapabilitiesDirective;
         }
@@ -832,309 +870,80 @@ La interfaz del chat de AutoProd interceptará este bloque y renderizará autom�
 
         systemPrompt += interactiveQuestionsDirective;
         
-        // Mapear herramientas de la BD a Vercel AI SDK Tools
+        // ──────────────────────────────────────────────
+        // Mapear herramientas según el Dominio detectado (Domain Tool Retrieval)
+        // ──────────────────────────────────────────────
+        const allowedToolNames = getToolsForDomain(semanticMatch.matched ? semanticMatch.domain : undefined);
         const toolNames: string[] = [];
+
         for (const at of orchestrator.agentTools) {
           const dbTool = at.tool;
           if (!dbTool) continue;
-          
-          toolNames.push(dbTool.name);
 
+          // Filtrar por dominio: solo instanciar si la herramienta está permitida
+          if (allowedToolNames.length > 0 && !allowedToolNames.includes(dbTool.name)) {
+            continue;
+          }
+
+          toolNames.push(dbTool.name);
           const toolSchemaObj = jsonSchema((dbTool.schema && typeof dbTool.schema === 'object') ? dbTool.schema as any : { type: 'object', properties: {} });
 
           aiTools[dbTool.name] = (aiTool as any)({
             description: dbTool.description || '',
             parameters: toolSchemaObj,
             execute: async (args: any) => {
-               try {
-                 executedTools.push(dbTool.name);
-                 console.log(`[Proxy Tool] Invocando ${dbTool.name} en ${dbTool.apiEndpoint}`);
-                 
-                 // Inyectar el contexto dinámico del usuario en los argumentos (incluyendo workspacePath)
-                 const payload = { ...args, _userContext: { id: userId, name: userRecord?.name, email: userRecord?.email, workspacePath: currentWorkspacePath } };
-                  // 1. Normalización inteligente de sinónimos de parámetros (anti-422)
-                  if (!payload.path && (payload.file_path || payload.filepath || payload.filename || payload.archivo || payload.file || payload.target_path || payload.target || payload.nombre_archivo)) {
-                    payload.path = payload.file_path || payload.filepath || payload.filename || payload.archivo || payload.file || payload.target_path || payload.target || payload.nombre_archivo;
+              try {
+                executedTools.push(dbTool.name);
+                console.log(`[Tool Executor] Invocando ${dbTool.name} en ${dbTool.apiEndpoint}`);
+
+                const payload = {
+                  ...args,
+                  _userContext: {
+                    id: userId,
+                    name: userRecord?.name,
+                    email: userRecord?.email,
+                    workspacePath: currentWorkspacePath
                   }
-                  if (!payload.content && (payload.text || payload.body || payload.data || payload.contenido || payload.idea || payload.ideas || payload.resumen || payload.guion)) {
-                    payload.content = payload.text || payload.body || payload.data || payload.contenido || payload.idea || payload.ideas || payload.resumen || payload.guion;
-                  }
-                  if (!payload.folder_name && (payload.folder || payload.name || payload.nombre_carpeta || payload.directory)) {
-                    payload.folder_name = payload.folder || payload.name || payload.nombre_carpeta || payload.directory;
-                  }
-                  if (!payload.target_path && (payload.target || payload.destination || payload.ruta_destino)) {
-                    payload.target_path = payload.target || payload.destination || payload.ruta_destino;
-                  }
-                  if (!payload.channel_name && (payload.channel || payload.canal || payload.nombre_canal)) {
-                    payload.channel_name = payload.channel || payload.canal || payload.nombre_canal;
-                  }
+                };
 
-                  // Sanitizar nombres de carpetas para evitar caracteres ilegales en Windows/POSIX (: * ? " < > |)
-                  if (payload.folder_name && typeof payload.folder_name === 'string') {
-                    payload.folder_name = payload.folder_name.replace(/[\\/:*?"<>|]/g, ' - ').replace(/\s+/g, ' ').trim();
-                  }
-                  if (payload.channel_name && typeof payload.channel_name === 'string') {
-                    payload.channel_name = payload.channel_name.replace(/[\\/:*?"<>|]/g, ' - ').replace(/\s+/g, ' ').trim();
-                  }
-                  if (!payload.base_path) {
-                    if (payload.path) payload.base_path = payload.path;
-                    else if (payload.channel_name) payload.base_path = payload.channel_name;
-                    else if (payload.folder_name && (dbTool.name === 'listar_directorio' || dbTool.name === 'listar_directorio_plano')) {
-                      payload.base_path = payload.folder_name;
-                    }
-                  }
-
-                  // Normalización para extraer_canal_youtube
-                  if (dbTool.name === 'extraer_canal_youtube') {
-                    if (!payload.url_canal && (payload.url || payload.canal_url || payload.channel_url || payload.canal || payload.channel || payload.handle || payload.link)) {
-                      payload.url_canal = payload.url || payload.canal_url || payload.channel_url || payload.canal || payload.channel || payload.handle || payload.link;
-                    }
-                  }
-
-                  // Normalización para crear_canal
-                  if (dbTool.name === 'crear_canal') {
-                    if (!payload.nombre_canal && (payload.canal || payload.channel || payload.name || payload.nombre)) {
-                      payload.nombre_canal = payload.canal || payload.channel || payload.name || payload.nombre;
-                    }
-                    if (!payload.tematica && (payload.niche || payload.nicho || payload.tema || payload.contexto_del_usuario || payload.description)) {
-                      payload.tematica = payload.niche || payload.nicho || payload.tema || payload.contexto_del_usuario || payload.description;
-                    }
-                    if (!payload.estilo_tono && (payload.estilo || payload.tono || payload.style)) {
-                      payload.estilo_tono = payload.estilo || payload.tono || payload.style;
-                    }
-                    if (!payload.audiencia && (payload.publico_objetivo || payload.audience)) {
-                      payload.audiencia = payload.publico_objetivo || payload.audience;
-                    }
-                  }
-
-                  // 2. Extensión .md o .txt automática para archivos
-                  if (dbTool.name === 'guardar_archivo' && payload.path && typeof payload.path === 'string') {
-                    if (!payload.path.endsWith('.md') && !payload.path.endsWith('.txt')) {
-                      payload.path += '.md';
-                    }
-                  }
-
-                  // 3. Obtener raíz de workspace efectiva (prioridad: request body -> detector)
-                  const effectiveWorkspaceRoot = (workspacePath && typeof workspacePath === 'string' && workspacePath.trim() !== '')
-                    ? workspacePath
-                    : (getWorkspacePath() || '');
-
-                  // 4. GUARD ESPECÍFICO para listar_directorio y listar_directorio_plano
-                  if (dbTool.name === 'listar_directorio' || dbTool.name === 'listar_directorio_plano') {
-                    if (!payload.base_path || payload.base_path === '.' || payload.base_path === '/') {
-                      if (payload.channel_name) {
-                        payload.base_path = effectiveWorkspaceRoot ? path.join(effectiveWorkspaceRoot, payload.channel_name) : payload.channel_name;
-                      } else {
-                        payload.base_path = effectiveWorkspaceRoot;
-                      }
-                    } else if (effectiveWorkspaceRoot && !path.isAbsolute(payload.base_path)) {
-                      payload.base_path = path.join(effectiveWorkspaceRoot, payload.base_path);
-                    }
-                  }
-
-                  // 5. GUARD ESPECÍFICO para crear_carpetas: normalización individual y múltiple
-                  if (dbTool.name === 'crear_carpetas') {
-                    // Normalizar arrays si el modelo los pasó con otros nombres
-                    if (Array.isArray(payload.folder_name)) {
-                      payload.folders = payload.folder_name;
-                      delete payload.folder_name;
-                    }
-                    if (!payload.folders && (payload.carpetas || payload.folder_names || payload.nombres)) {
-                      payload.folders = payload.carpetas || payload.folder_names || payload.nombres;
-                    }
-                    if (!payload.paths && payload.rutas) {
-                      payload.paths = payload.rutas;
-                    }
-                    if (!payload.subfolders && payload.subcarpetas) {
-                      payload.subfolders = payload.subcarpetas;
-                    }
-                    if (payload.channel && !payload.channel_name) {
-                      payload.channel_name = payload.channel;
-                    }
-                    if (payload.canal && !payload.channel_name) {
-                      payload.channel_name = payload.canal;
-                    }
-                    // Si no hay target_path ni paths, definir target_path por defecto
-                    if (!payload.target_path && !payload.paths) {
-                      if (payload.channel_name) {
-                        payload.target_path = payload.channel_name;
-                      } else {
-                        payload.target_path = effectiveWorkspaceRoot;
-                      }
-                    }
-                  }
-
-                  // GUARD DE LÍMITES DE SUSCRIPCIÓN PARA CREACIÓN DE CANALES
-                  if ((dbTool.name === 'crear_carpetas' || dbTool.name === 'crear_canal') && !isAdmin && existingChannels.length >= maxChannels) {
-                    let isNewChannelAttempt = false;
-                    let requestedChannelName = '';
-
-                    // 1. Si se indicó channel_name y es diferente a los canales ya existentes
-                    if (payload.channel_name && !existingChannels.includes(payload.channel_name)) {
-                      isNewChannelAttempt = true;
-                      requestedChannelName = payload.channel_name;
-                    }
-
-                    // 2. Si el destino es la raíz del workspace (sin target_path o igual a effectiveWorkspaceRoot)
-                    const normTarget = (payload.target_path || '').replace(/\\/g, '/').toLowerCase();
-                    const normWsRoot = (effectiveWorkspaceRoot || '').replace(/\\/g, '/').toLowerCase();
-                    const isRootTarget = !payload.target_path || normTarget === normWsRoot || normTarget === '.' || normTarget === '/';
-
-                    if (isRootTarget && !payload.channel_name) {
-                      const candidateFolders = [
-                        payload.folder_name,
-                        ...(Array.isArray(payload.folders) ? payload.folders : []),
-                        ...(Array.isArray(payload.paths) ? payload.paths : [payload.path]),
-                      ].filter(Boolean);
-
-                      for (const f of candidateFolders) {
-                        if (typeof f === 'string') {
-                          const cleanName = path.basename(f.trim().replace(/\\/g, '/'));
-                          // Si no es un canal existente ni pertenece a uno existente
-                          if (!existingChannels.includes(cleanName) && !existingChannels.some(ch => f.includes(ch))) {
-                            isNewChannelAttempt = true;
-                            requestedChannelName = cleanName;
-                            break;
-                          }
-                        }
-                      }
-                    }
-
-                    if (isNewChannelAttempt) {
-                      console.warn(`[Plan Limit Guard]: Bloqueada creación del canal "${requestedChannelName}" para usuario en plan ${userPlan}`);
-                      return `[LÍMITE DE PLAN ALCANZADO]: No es posible crear el nuevo canal "${requestedChannelName}". El usuario tiene el plan ${planConfig.displayName} (${userPlan}), que solo permite un máximo de ${maxChannels} canal(es). Su workspace ya contiene el canal "${existingChannels[0] || 'existente'}". NO intentes crear la carpeta e informa claramente al usuario que ha alcanzado el límite de su plan, e invítalo a actualizar a Plan Pro ($100 USD para 3 canales) o Enterprise ($150 USD para canales ilimitados).`;
-                    }
-                  }
-
-                  if (dbTool.name === 'extraer_canal_youtube' && !isAdmin && existingChannels.length >= maxChannels) {
-                    console.warn(`[Plan Limit Guard]: Bloqueada extracción de canal para usuario en plan ${userPlan}`);
-                    return `[LÍMITE DE PLAN ALCANZADO]: No se puede extraer un nuevo canal de YouTube. El usuario se encuentra en el plan ${planConfig.displayName} (${userPlan}), el cual solo permite un máximo de ${maxChannels} canal(es). Su workspace ya cuenta con el canal '${existingChannels[0] || 'existente'}'. Informa al usuario que ha alcanzado el límite de su plan y debe subir a Plan Pro (hasta 3 canales) o Enterprise (canales ilimitados) para importar nuevos canales.`;
-                  }
-
-                  // 6. GUARD ESPECÍFICO para eliminar_carpetas: asegurar soporte individual y múltiple (multiplataforma)
-                  if (dbTool.name === 'eliminar_carpetas') {
-                    const channelName = payload.channel_name ?? payload.canal ?? payload.channel ?? null;
-                    if (channelName) payload.channel_name = String(channelName);
-
-                    const collectedPaths: string[] = [];
-
-                    // Recolectar de arrays
-                    const candidateArrays = [payload.paths, payload.rutas, payload.folders, payload.carpetas];
-                    for (const arr of candidateArrays) {
-                      if (Array.isArray(arr)) {
-                        for (const item of arr) {
-                          if (item && typeof item === 'string' && item.trim()) {
-                            collectedPaths.push(item.trim());
-                          }
-                        }
-                      }
-                    }
-
-                    // Recolectar de valores individuales
-                    const singleCandidates = [
-                      payload.ruta, payload.path, payload.target_path, payload.folder_path,
-                      payload.folder_name, payload.folder, payload.name, payload.carpeta
-                    ];
-                    for (const cand of singleCandidates) {
-                      if (cand && typeof cand === 'string' && cand.trim()) {
-                        if (!collectedPaths.includes(cand.trim())) {
-                          collectedPaths.push(cand.trim());
-                        }
-                      }
-                    }
-
-                    // Limpieza y estandarización a barras /
-                    if (collectedPaths.length > 0) {
-                      const cleanList = collectedPaths.map(p => {
-                        let c = p.replace(/\\/g, '/');
-                        const isAbs = c.startsWith('/') || /^[a-zA-Z]:\//.test(c);
-                        if (!isAbs && effectiveWorkspaceRoot && !payload.channel_name) {
-                          c = path.join(effectiveWorkspaceRoot, c).replace(/\\/g, '/');
-                        }
-                        return c;
-                      });
-
-                      payload.paths = cleanList;
-                      if (cleanList.length === 1) {
-                        payload.ruta = cleanList[0];
-                      }
-                    }
-                  }
-
-                  // Log args reales para debugging
-                  console.log(`[Proxy Tool] Args recibidos para ${dbTool.name}:`, JSON.stringify(args));
-                  console.log(`[Proxy Tool] Payload normalizado:`, JSON.stringify(payload));
-
-                  // 7. Garantizar que TODAS las rutas absolutas antepongan effectiveWorkspaceRoot si son relativas
-                  if (effectiveWorkspaceRoot) {
-                    if (payload.path && typeof payload.path === 'string' && !path.isAbsolute(payload.path)) {
-                      payload.path = path.join(effectiveWorkspaceRoot, payload.path);
-                    }
-                    if (payload.target_path && typeof payload.target_path === 'string' && !path.isAbsolute(payload.target_path)) {
-                      payload.target_path = path.join(effectiveWorkspaceRoot, payload.target_path);
-                    }
-                    if (payload.base_path && typeof payload.base_path === 'string' && !path.isAbsolute(payload.base_path)) {
-                      payload.base_path = path.join(effectiveWorkspaceRoot, payload.base_path);
-                    }
-                    if (Array.isArray(payload.paths) && dbTool.name !== 'eliminar_carpetas' && dbTool.name !== 'crear_carpetas') {
-                      payload.paths = payload.paths.map((p: any) => {
-                        if (typeof p !== 'string') return p;
-                        if (path.isAbsolute(p)) return p;
-                        return path.join(effectiveWorkspaceRoot, p);
-                      });
-                    }
-                  }
-                  // Para métodos GET, convertir argumentos a query params
-                  let url = dbTool.apiEndpoint;
-                  // Si es un endpoint interno de Next.js (/api/tools/...), resolver dinámicamente con el host actual
-                  if (url.includes('/api/tools/')) {
-                    const host = req.headers.get('host') || 'localhost:3000';
-                    const protocol = req.headers.get('x-forwarded-proto') || (host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
-                    const pathname = url.startsWith('http') ? new URL(url).pathname : url;
-                    url = `${protocol}://${host}${pathname}`;
-                  }
-
-                  if (dbTool.method === 'GET' && payload && Object.keys(payload).length > 0) {
-                    const params = new URLSearchParams();
-                    for (const [key, val] of Object.entries(payload)) {
-                      if (key !== '_userContext' && val !== undefined && val !== null && typeof val !== 'object') {
-                        params.append(key, String(val));
-                      }
-                    }
-                    const qs = params.toString();
-                    if (qs) {
-                      url += (url.includes('?') ? '&' : '?') + qs;
-                    }
-                  }
-                  
-                  const response = await fetch(url, {
-                    method: dbTool.method,
-                    headers: {
-                      'Content-Type': 'application/json'
-                    },
-                    body: dbTool.method !== 'GET' ? JSON.stringify(payload) : undefined
-                  });
-                  
-                  if (!response.ok) {
-                    const errorJson = await response.json().catch(() => ({}));
-                    let detail = errorJson.detail || errorJson.error || errorJson.message;
-                    if (Array.isArray(detail)) {
-                      detail = detail.map((d: any) => `${d.loc ? d.loc.join('.') + ': ' : ''}${d.msg || JSON.stringify(d)}`).join(' | ');
-                    } else if (typeof detail === 'object') {
-                      detail = JSON.stringify(detail);
-                    }
-                    return `[Error en ${dbTool.name} (HTTP ${response.status})]: ${detail || response.statusText}.`;
-                  }
-
-                  const data = await response.json();
-                  return JSON.stringify(data);
-                } catch(e: any) {
-                  const isMotor = dbTool.apiEndpoint.includes(':8000');
-                  const hint = isMotor 
-                    ? 'Verifica si el motor local está activo en el puerto 8000.' 
-                    : 'Verifica la conexión y configuración de la herramienta del sistema.';
-                  return `[Fallo de conexión en ${dbTool.name}]: ${e.message}. ${hint}`;
+                let url = dbTool.apiEndpoint;
+                // Si es un endpoint interno de Next.js (/api/tools/...), resolver dinámicamente con el host actual
+                if (url.includes('/api/tools/')) {
+                  const host = req.headers.get('host') || 'localhost:3000';
+                  const protocol = req.headers.get('x-forwarded-proto') || (host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
+                  const pathname = url.startsWith('http') ? new URL(url).pathname : url;
+                  url = `${protocol}://${host}${pathname}`;
                 }
+
+                if (dbTool.method === 'GET' && payload && Object.keys(payload).length > 0) {
+                  const params = new URLSearchParams();
+                  for (const [key, val] of Object.entries(payload)) {
+                    if (key !== '_userContext' && val !== undefined && val !== null && typeof val !== 'object') {
+                      params.append(key, String(val));
+                    }
+                  }
+                  const qs = params.toString();
+                  if (qs) {
+                    url += (url.includes('?') ? '&' : '?') + qs;
+                  }
+                }
+
+                const response = await fetch(url, {
+                  method: dbTool.method,
+                  headers: { 'Content-Type': 'application/json' },
+                  body: dbTool.method !== 'GET' ? JSON.stringify(payload) : undefined
+                });
+
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                  const detail = data.detail || data.error || data.message || response.statusText;
+                  return `[Error en ${dbTool.name} (HTTP ${response.status})]: ${detail}.`;
+                }
+
+                return JSON.stringify(data);
+              } catch (e: any) {
+                return `[Fallo de conexión en ${dbTool.name}]: ${e.message}.`;
+              }
             }
           });
         }
@@ -1268,28 +1077,11 @@ DIRECTIVA ESTRATÉGICA PARA PENSAMIENTO PROFUNDO:
     // ──────────────────────────────────────────────
     // 3. Generar Texto (Function Calling Nativo)
     // ──────────────────────────────────────────────
-    // Filtrado inteligente por dominios (Domain Tool Retrieval)
-    let effectiveAiTools = aiTools;
-    if (semanticMatch.matched && semanticMatch.domain) {
-      const allowedTools = getToolsForDomain(semanticMatch.domain);
-      if (allowedTools.length > 0) {
-        const filtered: Record<string, any> = {};
-        for (const toolName of allowedTools) {
-          if (aiTools[toolName]) {
-            filtered[toolName] = aiTools[toolName];
-          }
-        }
-        if (Object.keys(filtered).length > 0) {
-          effectiveAiTools = filtered;
-        }
-      }
-    }
-
     const result: any = await generateText({
       model: aiModel,
       messages: history.filter((h: any) => h.role !== 'system'),
       system: systemPrompt,
-      tools: Object.keys(effectiveAiTools).length > 0 ? effectiveAiTools : undefined,
+      tools: Object.keys(aiTools).length > 0 ? aiTools : undefined,
       maxSteps: 5 // Permite al LLM iterar, llamar herramientas y luego responder
     } as any);
 

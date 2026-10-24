@@ -140,18 +140,20 @@ export function logIntentTelemetry({
  * para el filtrado dinámico de herramientas (Domain Tool Retrieval).
  */
 export function getToolsForDomain(domain?: ToolDomain): string[] {
-  const commonSystemTools = ['consultar_prompts', 'estado_sistema', 'workspace_default'];
+  const commonSystemTools = ['system_control'];
 
   switch (domain) {
     case 'WORKSPACE_FS':
-      return ['crear_canal', 'crear_carpetas', 'listar_canales', ...commonSystemTools];
+      return ['workspace_control', ...commonSystemTools];
     case 'VIDEO_PROJECT':
-      return ['crear_carpetas', 'consultar_proyecto_video', 'listar_proyectos_video', ...commonSystemTools];
+      return ['workspace_control', ...commonSystemTools];
     case 'CHANNEL_MEMORY':
-      return ['crear_canal', 'extraer_canal_youtube', 'generar_info_canal', ...commonSystemTools];
+      return ['channel_memory', 'workspace_control', ...commonSystemTools];
     case 'CREATIVE_STUDIO':
-      return ['generar_locucion', 'generar_imagen', ...commonSystemTools];
+      return ['creative_studio', 'workspace_control', ...commonSystemTools];
+    case 'SYSTEM':
+      return ['system_control'];
     default:
-      return []; // Si no hay dominio, se conservan todas
+      return ['system_control']; // Fallback: Modo Asesor sin herramientas de disco
   }
 }

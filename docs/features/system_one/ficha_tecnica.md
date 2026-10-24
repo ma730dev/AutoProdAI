@@ -10,9 +10,9 @@
 ## 🏛️ 1. Arquitectura y Propósito
 
 El **Router Semántico (System 1)** actúa como una capa de decisión de ultra-baja latencia (< 50ms) previa a la invocación del modelo de lenguaje autorregresivo (GPT-4o, Claude o Gemini). Su misión es:
-1. **Clasificación por Dominios (Namespaces):** Agrupar herramientas en bolsas lógicas (`WORKSPACE_FS`, `VIDEO_PROJECT`, `CHANNEL_MEMORY`, `CREATIVE_STUDIO`, `SYSTEM`).
-2. **Fast-Path Determinista:** Resolver consultas operativas directas (listados, lecturas de proyectos, estado) sin invocar el LLM ni quemar tokens de entrada/salida.
-3. **Domain Tool Retrieval:** Cuando el LLM sí debe intervenir, inyectar únicamente las herramientas del dominio detectado en lugar del inventario completo de herramientas, reduciendo alucinaciones y latencia.
+1. **Clasificación por Dominios (Namespaces):** Agrupar herramientas en 4 dominios unificados ejecutables (`workspace_control`, `creative_studio`, `channel_memory`, `system_control`).
+2. **Fast-Path Determinista:** Resolver consultas operativas directas (capacidades del sistema, listados de canales en disco, lecturas de proyectos, estado de motor local) en < 15ms sin invocar el LLM ni quemar tokens de entrada/salida.
+3. **Domain Tool Retrieval:** Cuando el LLM sí debe intervenir, inyectar únicamente las herramientas del dominio detectado en lugar del inventario completo de herramientas, reduciendo alucinaciones, tiempo de procesamiento y consumo de tokens.
 4. **Data Flywheel Asíncrono:** Registrar consultas en caliente en `intentTelemetry` (texto plano, $0 costo, 2ms) para su posterior curaduría y enriquecimiento del índice limpio `toolIntentGolden`.
 
 ---
