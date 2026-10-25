@@ -151,9 +151,9 @@ export function getToolsForDomain(domain?: ToolDomain): string[] {
       return ['channel_memory', 'workspace_control', ...commonSystemTools];
     case 'CREATIVE_STUDIO':
       return ['creative_studio', 'workspace_control', ...commonSystemTools];
-    case 'SYSTEM':
-      return ['system_control'];
     default:
-      return ['system_control']; // Fallback: Modo Asesor sin herramientas de disco
+      // En Fase 1 (Workspace-First), el orquestador tiene acceso pleno a las herramientas activas del sistema
+      return ['workspace_control', 'creative_studio', ...commonSystemTools];
   }
 }
+

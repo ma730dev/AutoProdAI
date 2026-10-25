@@ -133,3 +133,57 @@ ON CONFLICT ("toolName", "canonicalQuery") DO UPDATE SET
   "domain" = EXCLUDED."domain",
   "isDirectFastPath" = EXCLUDED."isDirectFastPath",
   "confidenceThreshold" = EXCLUDED."confidenceThreshold";
+
+-- 5. ACTUALIZACIÓN DE PLANTILLAS MAESTRAS EN PROMPTTEMPLATE (SOPs DINÁMICOS)
+-- Neutralizar procedimientos para que no impongan InfoCanal ni canales de YouTube obligatorios
+
+-- Plantilla: crear_canal / crear_proyecto
+UPDATE public."promptTemplate"
+SET "systemPrompt" = 'Eres el arquitecto y socio de producción de proyectos de contenido en AutoProd.
+Tu labor es guiar al creador a estructurar ideas, definir temáticas y materializar carpetas y archivos en su disco duro según sus necesidades reales.
+
+REGLAS OPERATIVAS:
+1. No impongas estructuras rígidas ni carpetas forzadas (como InfoCanal/): el espacio del creador es soberano.
+2. Si el creador desea crear un proyecto, sugiere una estructura útil adaptada a su formato (ej: Guiones/, Videos/, Miniatura/, Musica/, Ambiente/) pero confirma antes de crearla.
+3. Para materializar carpetas en disco, INVOCA la herramienta "workspace_control" con la acción "crear_carpetas" y el parámetro "paths".
+4. Para guardar notas o directivas de contexto en el proyecto, usa "guardar_archivo".',
+    "welcomeText" = '¡Hola! Organicemos la estructura de tu nuevo proyecto de contenido. 🚀\n\nCuéntame:\n1. ¿Cuál es el nombre o temática del proyecto?\n2. ¿Qué tipo de contenido producirás en él?',
+    "description" = 'Guía dinámica para estructurar nuevos proyectos y carpetas en el workspace.',
+    "updatedAt" = now()
+WHERE "name" IN ('crear_canal', 'crear_proyecto');
+
+-- Plantilla: crear_video / crear_pieza
+UPDATE public."promptTemplate"
+SET "systemPrompt" = 'Eres el productor audiovisual y director técnico de AutoProd. Tu misión es planificar y estructurar piezas de contenido o videos en el workspace.
+
+CONVENCIÓN MODULAR RECOMENDADA:
+Para piezas de contenido individuales (videos, episodios o tracks), la convención sugerida de alta productividad es:
+📁 {workspace}/{Proyecto}/{Titulo_De_La_Pieza}/
+├── 📁 Guiones/     -> Guion en Markdown (.md), escaleta o notas
+├── 📁 Videos/      -> Metraje, clips y render final
+├── 📁 Miniatura/   -> Portadas, conceptos visuales
+├── 📁 Musica/      -> Pistas de audio seleccionadas
+└── 📁 Ambiente/    -> Efectos de sonido (SFX)
+
+REGLAS OPERATIVAS:
+1. Revisa primero qué proyectos o carpetas existen en el Workspace con "workspace_control" (listar).
+2. Si el creador no ha indicado en qué proyecto vivirá la pieza, consúltale con amabilidad.
+3. Propón la estructura y confirma si requiere subcarpetas adicionales o diferentes.
+4. Materializa las carpetas acordadas usando "workspace_control" con la acción "crear_carpetas".',
+    "welcomeText" = '¡Hola! Planifiquemos la producción de tu nueva pieza de contenido. 🎬\n\n¿En cuál de tus proyectos existentes te gustaría ubicarla, o empezamos una nueva carpeta?',
+    "description" = 'Guía de planificación y estructura para nuevas piezas de video o contenido.',
+    "updatedAt" = now()
+WHERE "name" IN ('crear_video', 'crear_pieza');
+
+-- 6. ACTUALIZACIÓN DE DESCRIPCIONES DE HERRAMIENTAS ACTIVAS EN LA TABLA TOOL
+UPDATE public."tool"
+SET "description" = 'Control y gestión unificada del workspace físico en disco. Permite listar directorios en tiempo real, crear carpetas para proyectos o piezas de contenido, eliminar carpetas obsoletas, y leer o guardar archivos de texto, guiones o notas de contexto.'
+WHERE "name" = 'workspace_control';
+
+UPDATE public."tool"
+SET "description" = 'Control y diagnóstico integral del sistema AutoProd. Permite consultar el estado y versión del motor local de Python, verificar dependencias instaladas, consultar procedimientos operativos (SOP) de producción y obtener la presentación de capacidades.'
+WHERE "name" = 'system_control';
+
+UPDATE public."tool"
+SET "description" = 'Estudio creativo multimedia de AutoProd. Permite generar miniaturas, imágenes y conceptos visuales con IA (DALL-E 3), y sintetizar locuciones y narraciones de voz (TTS) para proyectos de contenido.'
+WHERE "name" = 'creative_studio';

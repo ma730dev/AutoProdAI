@@ -122,17 +122,17 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      sistema: 'AutoProd AI — Sistema Operativo para Canales de Contenido',
+      sistema: 'AutoProd AI — Sistema Operativo para Proyectos de Contenido',
       pilares: [
-        { pilar: 'CREA', descripcion: 'Desarrolla ideas con intención, guiones estructurados y portadas llamativas.' },
+        { pilar: 'CREA', descripcion: 'Desarrolla ideas con intención, temas y guiones estructurados.' },
         { pilar: 'PRODUCE', descripcion: 'Ensamble audiovisual, clips, bucles de video de 1 a 3 horas y subtítulos automáticos.' },
-        { pilar: 'ANALIZA', descripcion: 'Memoria de contenidos cubiertos, métricas de retención y análisis de etiquetas.' },
-        { pilar: 'ESCALA', descripcion: 'Organización multicanal ordenada, gestión de archivos soberana y workflow predecible.' }
+        { pilar: 'ANALIZA', descripcion: 'Referencias de nicho, enfoques temáticos y memoria histórica de lo ya cubierto.' },
+        { pilar: 'ESCALA', descripcion: 'Gestión ordenada de carpetas y proyectos en tu propio disco duro.' }
       ],
       workspace: {
         ruta: wsRoot,
-        total_canales: channels.length,
-        canales_detectados: channels
+        total_proyectos: channels.length,
+        proyectos_detectados: channels
       },
       dominios_herramientas: {
         workspace_control: 'Gestión de carpetas, proyectos y archivos en disco.',

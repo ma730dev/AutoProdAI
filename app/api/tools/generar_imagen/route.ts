@@ -79,7 +79,10 @@ export async function POST(req: NextRequest) {
     const {
       prompt,
       aspect_ratio = '16:9',
-      aspectRatio,
+      project_name,
+      projectName,
+      target_path,
+      path: customPath,
       channel_name,
       channelName,
       video_title,
@@ -97,7 +100,8 @@ export async function POST(req: NextRequest) {
 
     const finalAspectRatio = aspect_ratio || aspectRatio || '16:9';
     const finalTipo = (tipo || type || 'THUMBNAIL').toUpperCase();
-    const targetChannel = channel_name || channelName || null;
+    const explicitTargetFolder = target_path || customPath || null;
+    const targetProject = project_name || projectName || channel_name || channelName || null;
     const targetVideo = video_title || videoTitle || video_name || null;
 
     // Obtener contexto de usuario y workspace
@@ -204,14 +208,15 @@ export async function POST(req: NextRequest) {
     let targetDirectory: string | null = null;
 
     if (workspaceRoot) {
-      if (targetChannel && targetVideo) {
-        // En proyecto de video: /{workspace}/{channel}/{video}/Miniatura/
-        targetDirectory = path.join(workspaceRoot, targetChannel, targetVideo, 'Miniatura');
-      } else if (targetChannel) {
-        // En canal: /{workspace}/{channel}/InfoCanal/ o /{workspace}/{channel}/Miniatura/
-        targetDirectory = finalTipo === 'BANNER' || finalTipo === 'LOGO'
-          ? path.join(workspaceRoot, targetChannel, 'InfoCanal')
-          : path.join(workspaceRoot, targetChannel, 'Miniatura');
+      if (explicitTargetFolder) {
+        // Ruta explícita indicada por el usuario o la IA (relativa a workspace o absoluta)
+        targetDirectory = path.isAbsolute(explicitTargetFolder)
+          ? explicitTargetFolder
+          : path.join(workspaceRoot, explicitTargetFolder);
+      } else if (targetProject && targetVideo) {
+        targetDirectory = path.join(workspaceRoot, targetProject, targetVideo, 'Miniatura');
+      } else if (targetProject) {
+        targetDirectory = path.join(workspaceRoot, targetProject, 'Miniatura');
       } else {
         // Carpeta general de recursos
         targetDirectory = path.join(workspaceRoot, 'Recursos', 'Miniaturas');
