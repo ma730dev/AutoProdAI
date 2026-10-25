@@ -305,7 +305,7 @@ export async function POST(req: Request) {
         resolvedPrompt = resolvedPrompt.replace(/⛔ REGLA ABSOLUTA — PROHIBICIÓN DE RESPUESTAS TIPO MENÚ[\s\S]*?(?=\n\n|$)/g, '');
         systemPrompt = (userRecord?.name ? `Estás hablando con ${userRecord.name}. Dirígete a él/ella por su nombre.\n\n` : '') + resolvedPrompt;
 
-        // Escanear el estado físico actual del workspace en disco en tiempo real
+        // Escanear el estado físico actual del workspace en disco en tiempo real (espacio abierto)
         let workspaceStructureSnapshot = '';
         try {
           if (currentWorkspacePath && currentWorkspacePath !== 'No configurado' && fs.existsSync(currentWorkspacePath)) {
@@ -314,142 +314,67 @@ export async function POST(req: Request) {
               'temp', 'tmp', 'cache', '.git', '.next', 'workspace', 'youtube', 'docs',
               'controlador', 'harness', 'prisma', 'src', 'app', 'components', 'lib'
             ];
+            const MAX_ROOT_ENTRIES = 60;
+            const MAX_CHILD_ENTRIES = 20;
 
-            const entries = fs.readdirSync(currentWorkspacePath, { withFileTypes: true });
-            const structureLines: string[] = [];
-            for (const entry of entries) {
-              if (entry.name.startsWith('.')) continue;
-              if (entry.isDirectory()) {
-                const isReserved = SYSTEM_RESERVED_FOLDERS.includes(entry.name.toLowerCase());
-                const subPath = path.join(currentWorkspacePath, entry.name);
-                const hasInfoCanal = fs.existsSync(path.join(subPath, 'InfoCanal'));
+            const listEntries = (dir: string) => {
+              try {
+                return fs.readdirSync(dir, { withFileTypes: true }).filter(e => !e.name.startsWith('.'));
+              } catch {
+                return [];
+              }
+            };
 
-                // Toda carpeta en el workspace (no reservada) es un proyecto
-                if (!isReserved) {
-                  if (!existingProjects.includes(entry.name)) {
-                    existingProjects.push(entry.name);
-                  }
+            const rootEntries = listEntries(currentWorkspacePath);
+            const treeLines: string[] = [];
+
+            for (const entry of rootEntries.slice(0, MAX_ROOT_ENTRIES)) {
+              if (!entry.isDirectory()) {
+                treeLines.push(`📄 ${entry.name}`);
+                continue;
+              }
+
+              const isReserved = SYSTEM_RESERVED_FOLDERS.includes(entry.name.toLowerCase());
+              if (!isReserved && !existingProjects.includes(entry.name)) {
+                existingProjects.push(entry.name);
+              }
+
+              const children = listEntries(path.join(currentWorkspacePath, entry.name));
+              treeLines.push(`📁 ${entry.name}/${isReserved ? ' (sistema)' : ''}${children.length === 0 ? ' (vacía)' : ''}`);
+
+              for (const child of children.slice(0, MAX_CHILD_ENTRIES)) {
+                if (child.isDirectory()) {
+                  const count = listEntries(path.join(currentWorkspacePath, entry.name, child.name)).length;
+                  treeLines.push(`   📁 ${child.name}/ (${count} item${count === 1 ? '' : 's'})`);
+                } else {
+                  treeLines.push(`   📄 ${child.name}`);
                 }
-
-                let subDirs: string[] = [];
-                try {
-                  subDirs = fs.readdirSync(subPath, { withFileTypes: true })
-                    .filter(e => !e.name.startsWith('.'))
-                    .map(e => `${e.isDirectory() ? '📁' : '📄'} ${e.name}`);
-                } catch { /* ignorar errores de permisos */ }
-                structureLines.push(`• Proyecto "${entry.name}"${hasInfoCanal ? ' (con memoria InfoCanal)' : ''}: [${subDirs.join(', ') || 'vacío'}]`);
-              } else {
-                structureLines.push(`• Archivo en raíz: "${entry.name}"`);
+              }
+              if (children.length > MAX_CHILD_ENTRIES) {
+                treeLines.push(`   … y ${children.length - MAX_CHILD_ENTRIES} más`);
               }
             }
-            if (structureLines.length > 0) {
-              workspaceStructureSnapshot = `\n\n--- ESTADO ACTUAL DEL WORKSPACE EN DISCO (TIEMPO REAL) ---\nUbicación: ${currentWorkspacePath}\nProyectos detectados físicamente (${existingProjects.length}): ${existingProjects.join(', ')}\nElementos detectados actualmente:\n${structureLines.join('\n')}\n(Usa esta lista como verdad absoluta de lo que existe físicamente en el disco duro del usuario al momento de responder. Si el usuario pregunta qué tiene o se refiere a un proyecto o carpeta, básate en este estado).`;
-            } else {
-              workspaceStructureSnapshot = `\n\n--- ESTADO ACTUAL DEL WORKSPACE EN DISCO (TIEMPO REAL) ---\nUbicación: ${currentWorkspacePath}\nEl workspace está actualmente vacío (sin proyectos ni archivos).`;
+            if (rootEntries.length > MAX_ROOT_ENTRIES) {
+              treeLines.push(`… y ${rootEntries.length - MAX_ROOT_ENTRIES} elementos más en la raíz`);
             }
+
+            workspaceStructureSnapshot = treeLines.length > 0
+              ? `\n\n--- ESTADO ACTUAL DEL WORKSPACE EN DISCO (TIEMPO REAL) ---\nUbicación: ${currentWorkspacePath}\nContenido detectado físicamente (hasta 2 niveles):\n${treeLines.join('\n')}\n(Usa esta estructura como verdad absoluta del disco duro. No asumas que las carpetas son canales o videos: deduce el propósito de cada una según su nombre y contenido, o explora con workspace_control).`
+              : `\n\n--- ESTADO ACTUAL DEL WORKSPACE EN DISCO (TIEMPO REAL) ---\nUbicación: ${currentWorkspacePath}\nEl workspace está actualmente vacío (sin carpetas ni archivos).`;
           }
         } catch (scanErr: any) {
           console.warn("[Workspace Scan Error]:", scanErr.message);
         }
 
-        // Sincronizar canales de la base de datos
-        if (userId) {
-          try {
-            const dbChannels = await prisma.channel.findMany({ where: { userId }, select: { name: true } });
-            for (const dbc of dbChannels) {
-              if (!existingChannels.includes(dbc.name)) {
-                existingChannels.push(dbc.name);
-              }
-            }
-          } catch (dbErr: any) {
-            console.warn("[DB Channels Sync Error]:", dbErr.message);
-          }
-        }
-
         systemPrompt += workspaceStructureSnapshot;
 
-        // ──────────────────────────────────────────────
-        // RESOLVER CANAL ACTIVO (DETECCIÓN INTELIGENTE)
-        // ──────────────────────────────────────────────
+        // Contexto de canal desacoplado: solo si vino channelId explícito en el request
         activeChannel = null;
         activeChannelContext = null;
-
-        const allUserChannels = userId ? await prisma.channel.findMany({ where: { userId } }) : [];
-
-        // 1. Por channelId explícito en la petición
-        if (channelId) {
-          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(channelId);
-          if (isUuid) {
-            activeChannel = allUserChannels.find(c => c.id === channelId) || await prisma.channel.findFirst({ where: { id: channelId } });
-          }
-          if (!activeChannel) {
-            activeChannel = allUserChannels.find(c => c.name.toLowerCase() === String(channelId).toLowerCase());
-          }
-          if (!activeChannel && typeof channelId === 'string' && channelId.trim()) {
-            activeChannel = {
-              id: channelId,
-              name: channelId,
-              niche: channelId,
-              localPath: currentWorkspacePath ? path.join(currentWorkspacePath, channelId) : null
-            };
-          }
-        }
-
-        // 2. Detección por nombre de canal en el mensaje del usuario si no vino channelId
-        if (!activeChannel && messages && messages.length > 0) {
-          const recentUserText = messages
-            .filter((m: any) => m.role === 'user')
-            .slice(-2)
-            .map((m: any) => (m.content || '').toLowerCase())
-            .join(' ');
-
-          const normUserText = recentUserText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-          // Match directo contra nombres de canales o palabras del canal registrado
-          for (const ch of allUserChannels) {
-            const normName = ch.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            if (normUserText.includes(normName)) {
-              activeChannel = ch;
-              break;
-            }
-            // Coincidencia con palabras significativas del propio nombre del canal (de al menos 4 caracteres)
-            const channelWords = normName.split(/[\s_]+/).filter((w: string) => w.length >= 4);
-            if (channelWords.some((w: string) => normUserText.includes(w))) {
-              activeChannel = ch;
-              break;
-            }
-          }
-
-          // Match contra carpetas físicas en disco si no coincidió en BD
-          if (!activeChannel && existingChannels.length > 0) {
-            for (const folderName of existingChannels) {
-              const normFolder = folderName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-              if (normUserText.includes(normFolder)) {
-                activeChannel = allUserChannels.find(c => c.name.toLowerCase() === folderName.toLowerCase()) || {
-                  id: folderName,
-                  name: folderName,
-                  niche: folderName,
-                  localPath: currentWorkspacePath ? path.join(currentWorkspacePath, folderName) : null
-                };
-                break;
-              }
-              const folderWords = normFolder.split(/[\s_]+/).filter((w: string) => w.length >= 4);
-              if (folderWords.some((w: string) => normUserText.includes(w))) {
-                activeChannel = allUserChannels.find(c => c.name.toLowerCase() === folderName.toLowerCase()) || {
-                  id: folderName,
-                  name: folderName,
-                  niche: folderName,
-                  localPath: currentWorkspacePath ? path.join(currentWorkspacePath, folderName) : null
-                };
-                break;
-              }
-            }
-          }
-        }
-
-        // 3. Si el usuario tiene exactamente 1 canal registrado, asumirlo por defecto
-        if (!activeChannel && allUserChannels.length === 1) {
-          activeChannel = allUserChannels[0];
+        if (channelId && userId) {
+          try {
+            activeChannel = await prisma.channel.findFirst({ where: { id: channelId, userId } });
+          } catch {}
         }
 
         // ──────────────────────────────────────────────
@@ -669,148 +594,7 @@ export async function POST(req: Request) {
           }
         }
 
-        // ──────────────────────────────────────────────
-        // CARGA PROFUNDA DE ADN, MÉTRICAS E HISTORIAL
-        // ──────────────────────────────────────────────
-        let topTagsFormatted = '';
-        let recentVideosFormatted = '';
-        let channelSummary = '';
-        let channelNiche = '';
-        let channelLocal = '';
 
-        if (activeChannel) {
-          channelNiche = activeChannel.niche || activeChannel.name;
-          channelLocal = activeChannel.localPath || (currentWorkspacePath ? path.join(currentWorkspacePath, activeChannel.name) : `Workspace/${activeChannel.name}`);
-
-          // Cargar channelContext directamente desde Postgres con raw query (bypasea RLS)
-          if (activeChannel.id) {
-            try {
-              const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeChannel.id);
-              let rows: any[] = [];
-              if (isUuid) {
-                rows = await prisma.$queryRawUnsafe(
-                  `SELECT * FROM public."channelContext" WHERE "channelId" = $1::uuid LIMIT 1`,
-                  activeChannel.id
-                );
-              } else {
-                rows = await prisma.$queryRawUnsafe(
-                  `SELECT * FROM public."channelContext" WHERE "title" ILIKE $1 LIMIT 1`,
-                  `%${activeChannel.name}%`
-                );
-              }
-              if (rows && rows.length > 0) {
-                activeChannelContext = rows[0];
-              }
-            } catch (queryErr: any) {
-              console.warn('[DB channelContext query error]:', queryErr?.message);
-            }
-          }
-
-          // Cargar archivos locales de InfoCanal si existen físicamente en disco
-          let localContextText = '';
-          let localMetricasText = '';
-          let localHistorialText = '';
-          if (currentWorkspacePath && activeChannel.name) {
-            const infoCanalPath = path.join(currentWorkspacePath, activeChannel.name, 'InfoCanal');
-            try {
-              if (fs.existsSync(infoCanalPath)) {
-                const ctxFile = path.join(infoCanalPath, 'Contexto_canal.md');
-                if (fs.existsSync(ctxFile)) localContextText = fs.readFileSync(ctxFile, 'utf-8');
-                const metFile = path.join(infoCanalPath, 'Metricas_canal.md');
-                if (fs.existsSync(metFile)) localMetricasText = fs.readFileSync(metFile, 'utf-8');
-                const histFile = path.join(infoCanalPath, 'Historial_canal.md');
-                if (fs.existsSync(histFile)) localHistorialText = fs.readFileSync(histFile, 'utf-8');
-              }
-            } catch (fsErr: any) {
-              console.warn('[InfoCanal physical read error]:', fsErr.message);
-            }
-          }
-
-          // Resumen de identidad y nicho
-          channelSummary = activeChannelContext?.contextSummary
-            || activeChannelContext?.description
-            || (localContextText ? localContextText.slice(0, 1200) : `Canal de YouTube enfocado en el nicho: ${channelNiche}`);
-
-          if (activeChannelContext?.title && !channelNiche.includes(activeChannelContext.title)) {
-            channelNiche = `${channelNiche} (Nombre oficial en YouTube: "${activeChannelContext.title}")`;
-          }
-
-          // Formatear mejores etiquetas
-          let bestTagsList: any[] = [];
-          if (activeChannelContext?.bestTags) {
-            bestTagsList = Array.isArray(activeChannelContext.bestTags)
-              ? activeChannelContext.bestTags
-              : (typeof activeChannelContext.bestTags === 'string' ? JSON.parse(activeChannelContext.bestTags) : []);
-          }
-          if (bestTagsList.length > 0) {
-            topTagsFormatted = bestTagsList.slice(0, 12).map((t: any) => `• "${t.tag}" (Promedio vistas: ${Number(t.avgViews || 0).toLocaleString()} | Total: ${Number(t.totalViews || 0).toLocaleString()})`).join('\n');
-          } else if (localMetricasText) {
-            topTagsFormatted = localMetricasText.slice(0, 1000);
-          }
-
-          // Formatear historial de videos ya publicados
-          let coveredList: any[] = [];
-          if (activeChannelContext?.topicsCovered) {
-            coveredList = Array.isArray(activeChannelContext.topicsCovered)
-              ? activeChannelContext.topicsCovered
-              : (typeof activeChannelContext.topicsCovered === 'string' ? JSON.parse(activeChannelContext.topicsCovered) : []);
-          }
-          if (coveredList.length > 0) {
-            recentVideosFormatted = coveredList.slice(0, 15).map((v: any) => `• "${v.title}" (${Number(v.views || 0).toLocaleString()} vistas)`).join('\n');
-          } else if (localHistorialText) {
-            recentVideosFormatted = localHistorialText.slice(0, 1000);
-          }
-        }
-
-        const isAtChannelLimit = !isAdmin && existingChannels.length >= maxChannels;
-        const planLimitsDirective = `\n\n=== REGLAS Y LÍMITES DE SUSCRIPCIÓN DEL USUARIO ===
-- Plan de Suscripción Actual: ${userPlan} (${planConfig.displayName})
-- Límite de canales permitidos por su plan: ${maxChannels >= 9999 ? 'Ilimitados' : `${maxChannels} canal(es)`}
-- Canales existentes actualmente en su workspace (${existingChannels.length}): ${existingChannels.length > 0 ? existingChannels.join(', ') : 'Ninguno'}
-${isAtChannelLimit ? `
-⚠️ ATENCIÓN: El usuario ha alcanzado el límite máximo de canales permitidos por su plan (${existingChannels.length} de ${maxChannels}).
-Si solicita crear o extraer un nuevo canal adicional, no ejecutes herramientas de creación de canales e infórmale de forma muy amable y profesional que ha alcanzado el límite de canales de su plan ${planConfig.displayName} y sugiérele los planes superiores (Pro o Enterprise).` : ''}
-`;
-        systemPrompt += planLimitsDirective;
-
-        if (activeChannel) {
-          const channelSpecificDirective = `\n\n=== 🧠 ADN Y MEMORIA ACTIVA DEL CANAL: "${activeChannel.name}" ===
-- Canal: "${activeChannel.name}"
-- Nicho / Enfoque: "${channelNiche}"
-- Resumen de Identidad: ${channelSummary}
-- Ubicación física en Disco: "${channelLocal}"
-
-${topTagsFormatted ? `🔥 TEMAS Y ETIQUETAS MÁS EXITOSAS (DATOS REALES DE AUDIENCIA EN YOUTUBE):
-${topTagsFormatted}` : ''}
-
-${recentVideosFormatted ? `🚫 HISTORIAL DE VIDEOS YA PUBLICADOS (PROHIBIDO DUPLICAR O REPETIR ESTOS TEMAS/TÍTULOS):
-${recentVideosFormatted}` : ''}
-
-⚡ DIRECTIVA MANDATORIA DE PRODUCCIÓN (CERO PREGUNTAS EN BLANCO):
-El usuario te ha pedido crear un video o planificar contenido para "${activeChannel.name}".
-⛔ ESTÁ ESTRICTAMENTE PROHIBIDO hacer preguntas genéricas o en blanco como:
-- "¿Sobre qué debería tratar el video?"
-- "¿Qué estilo buscas (reflexivo, educativo, musical, etc.)?"
-- "¿Cuánto debería durar?"
-- "¿Qué detalles específicos quieres incluir?"
-
-¡Tú eres el Director Ejecutivo de AutoProd y YA TIENES el ADN y las métricas de este canal en tu memoria!
-TU CONDUCTA OBLIGATORIA:
-1. Saluda reconociendo con entusiasmo el canal "${activeChannel.name}" y destacando su estilo y audiencia (basándote en su resumen y etiquetas con más visitas).
-2. PROPÓN PROACTIVAMENTE 2 O 3 CONCEPTOS O TÍTULOS DE VIDEO GANADORES:
-   - Diseñados específicamente utilizando sus mejores etiquetas y temas más vistos.
-   - Garantizando que sean ideas NUEVAS y frescas que NO dupliquen ninguno de los videos de su historial.
-   - Con una breve explicación de 1 línea de por qué cada idea tendrá éxito basándote en la audiencia del canal.
-3. Pregúntale amablemente al usuario cuál de las 3 opciones le gusta más o cómo desea personalizarla para proceder a crear la carpeta del video en su disco (Guiones, Videos, Miniatura, Musica, Ambiente) y redactar el guion.`;
-
-          systemPrompt += channelSpecificDirective;
-        } else {
-          const generalCapabilitiesDirective = `\n\n=== CONTEXTO GENERAL DEL WORKSPACE ===
-- Proyectos detectados en tu workspace: ${existingProjects.length > 0 ? existingProjects.join(', ') : 'Ninguno aún'}.
-Si el usuario dice que desea crear o producir un video pero no ha especificado claramente en cuál proyecto desea trabajar, pregúntale amablemente: "¿Para cuál de tus proyectos (${existingProjects.join(', ')}) te gustaría que preparemos este contenido?". En cuanto el usuario lo indique, procede a trabajar dentro de esa carpeta.`;
-
-          systemPrompt += generalCapabilitiesDirective;
-        }
 
         const interactiveQuestionsDirective = `\n\n=== INTERFAZ DE PREGUNTAS Y FORMULARIOS INTERACTIVOS (INTERACTIVE QUESTION FORM) ===
 ⛔ ESTÁ ESTRICTAMENTE PROHIBIDO:
@@ -844,20 +628,20 @@ Ejemplo de 1 sola pregunta:
 Ejemplo de varias preguntas en pasos (Wizard secuencial):
 \`\`\`interactive-question
 {
-  "title": "Configuración de Nuevo Canal",
+  "title": "Briefing de Proyecto y Estrategia",
   "questions": [
     {
-      "question": "¿Cuál será la temática o nicho central del canal?",
-      "options": ["Misterio y Crímenes Reales", "Finanzas y Negocios Digitales", "Ciencia y Curiosidades", "Desarrollo Personal"]
+      "question": "¿Cuál es la temática o enfoque central de tu proyecto?",
+      "options": ["Documental e Historias Reales", "Finanzas y Negocios", "Ciencia y Tecnología", "Desarrollo Personal"]
     },
     {
-      "question": "¿Tienes algún canal de YouTube de referencia o inspiración?",
-      "options": ["Deseo que me propongas canales top del nicho", "No tengo referencias aún"],
+      "question": "¿A qué público o audiencia buscas dirigirte?",
+      "options": ["Jóvenes de 18 a 30 años", "Profesionales y emprendedores", "Audiencia general"],
       "allowCustomInput": true,
-      "customInputPlaceholder": "Escribe el nombre o link del canal de referencia..."
+      "customInputPlaceholder": "Escribe el público o nicho objetivo..."
     },
     {
-      "question": "¿Deseas que analicemos la estrategia con GPT-4o?",
+      "question": "¿Deseas procesar la estrategia en profundidad con GPT-4o?",
       "options": [
         { "label": "Sí, activar GPT-4o para plan maestro", "badge": "🧠 3 créditos", "recommended": true },
         { "label": "No, continuar en modo estándar", "badge": "⚡ Gratis" }
@@ -957,77 +741,12 @@ La interfaz del chat de AutoProd interceptará este bloque y renderizará autom�
 - Tienes activado el modo de Pensamiento Profundo y Razonamiento Estratégico.
 - ANTES de ejecutar herramientas o dar tu respuesta definitiva, analiza exhaustivamente el problema paso a paso.
 - Evalúa:
-  1. Psicología y retención de la audiencia de YouTube (gancho en los primeros 5 segundos, retención a mitad del video, llamados a la acción sin fricción).
-  2. Arquitectura de contenido y coherencia con la temática del canal y el workspace.
-  3. Viabilidad técnica de las carpetas y archivos necesarios.
-  4. Optimización de CTR, SEO y posicionamiento algorítmico.
-- Si vas a ejecutar herramientas para crear canales, videos o archivos, asegúrate de planificar la estructura de carpetas y archivos con máxima precisión antes de invocar la herramienta.
-- Brinda una respuesta estructurada, profunda y de alto impacto para el creador.`;
-      }
-
-      // Inyectar contexto semántico vectorial de canales importados (pgvector)
-      if (userId) {
-        try {
-          const lastUserMessage = [...messages].reverse().find((m: any) => m.role === 'user');
-          const userQueryText = typeof lastUserMessage?.content === 'string' 
-            ? lastUserMessage.content 
-            : (Array.isArray(lastUserMessage?.content) ? JSON.stringify(lastUserMessage.content) : '');
-
-          if (userQueryText && userQueryText.trim().length > 3) {
-            let oaiKey = process.env.OPENAI_API_KEY;
-            if (!oaiKey && userRecord?.openaiVaultId) {
-              const { data: sData } = await supabase.rpc('get_decrypted_secret', { p_secret_id: userRecord.openaiVaultId });
-              if (sData) oaiKey = typeof sData === 'string' ? sData : sData.get_decrypted_secret || sData;
-            }
-            if (!oaiKey) {
-              const { data: rpcK } = await supabase.rpc('get_api_key', { p_user_id: userId, p_provider: 'openai' });
-              if (rpcK && typeof rpcK === 'string') oaiKey = rpcK;
-            }
-
-            if (oaiKey) {
-              const { embedding } = await embed({
-                model: createOpenAI({ apiKey: oaiKey }).embedding('text-embedding-3-small'),
-                value: userQueryText.slice(0, 1000),
-              });
-
-              const { data: matchedChannels, error: matchErr } = await supabase.rpc('match_channel_contexts', {
-                query_embedding: `[${embedding.join(',')}]`,
-                match_threshold: 0.45,
-                match_count: 2,
-                p_user_id: userId,
-              });
-
-              if (!matchErr && Array.isArray(matchedChannels) && matchedChannels.length > 0) {
-                for (const mc of matchedChannels) {
-                  let antiDupSection = '';
-                  if (Array.isArray(mc.topics_covered) && mc.topics_covered.length > 0) {
-                    const topTitles = mc.topics_covered.slice(0, 15).map((t: any) => `• "${t.title}"`).join('\n');
-                    antiDupSection = `\n🚫 TEMAS Y TÍTULOS YA TRATADOS EN ESTE CANAL (REGLA ESTRICTA: NO DUPLICAR NI REPETIR ESTAS IDEAS):\n${topTitles}`;
-                  }
-
-                  let bestTagsSection = '';
-                  if (Array.isArray(mc.best_tags) && mc.best_tags.length > 0) {
-                    const tagNames = mc.best_tags.slice(0, 10).map((t: any) => `"${t.tag}" (${t.avgViews?.toLocaleString()} vistas prom.)`).join(', ');
-                    bestTagsSection = `\n🏷️ ETIQUETAS GANADORAS RECOMENDADAS PARA ESTE CANAL:\n${tagNames}`;
-                  }
-
-                  systemPrompt += `\n\n=== CANAL HISTÓRICO RELEVANTE DETECTADO (SIMILITUD SEMÁNTICA: ${Math.round((mc.similarity || 0) * 100)}%) ===
-Canal: "${mc.title}" (${mc.handle || 'Sin handle'})
-Identidad y Resumen: ${mc.context_summary}
-${bestTagsSection}
-${antiDupSection}
-DIRECTIVA ESTRATÉGICA PARA PENSAMIENTO PROFUNDO:
-- El usuario se está refiriendo o su consulta se alinea con este canal.
-- Prohibido repetir los títulos o conceptos ya realizados listados arriba.
-- Utiliza las etiquetas ganadoras comprobadas para optimizar la propuesta.
-- Propón enfoques frescos, ángulos complementarios y estructuras de alto CTR.`;
-                }
-              }
-            }
-          }
-        } catch (vectorErr: any) {
-          console.warn('[Vector Context Retrieval]:', vectorErr?.message);
-        }
+  1. La intención del creador y el contexto real que existe en su workspace.
+  2. La coherencia de lo que propones con lo que ya existe en sus proyectos.
+  3. La viabilidad técnica de las carpetas y archivos necesarios.
+  4. Las alternativas y su costo (tiempo, créditos) para que el creador decida.
+- Si vas a ejecutar herramientas para crear carpetas o archivos, planifica la estructura con precisión antes de invocarlas y confirma con el creador si algo no está claro.
+- Brinda una respuesta estructurada y de alto impacto para el creador.`;
       }
       
     } catch (e) {

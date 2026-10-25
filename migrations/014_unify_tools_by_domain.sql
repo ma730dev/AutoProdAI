@@ -223,6 +223,7 @@ VALUES
 ('listar_proyectos_workspace', 'WORKSPACE_FS', '¿qué canales tengo?', true, 0.78),
 ('listar_proyectos_workspace', 'WORKSPACE_FS', 'qué proyectos tengo', true, 0.78),
 ('listar_proyectos_workspace', 'WORKSPACE_FS', 'qué carpetas tengo', true, 0.78),
+
 ('listar_proyectos_workspace', 'WORKSPACE_FS', 'qué tengo en mi workspace', true, 0.78),
 ('listar_proyectos_workspace', 'WORKSPACE_FS', 'listar carpetas del workspace', true, 0.78),
 ('listar_proyectos_workspace', 'WORKSPACE_FS', 'ver mis proyectos en disco', true, 0.78),

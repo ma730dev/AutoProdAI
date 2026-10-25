@@ -1,6 +1,6 @@
 # 💡 Visión y Negocio: Landing Page & Console UX/UI Revamp (FEAT-13)
 
-> **Propósito:** Posicionar a AutoProd como **el sistema operativo para canales de contenido**. Unificar el flujo creativo, de producción, análisis y escala en un solo lugar, dejando atrás el caos de 10 herramientas desconectadas y comunicando el valor de la plataforma bajo el principio: *«La automatización no reemplaza al creador. Le devuelve tiempo para crear.»*
+> **Propósito:** Posicionar a AutoProd como **el sistema operativo para proyectos de contenido**. Unificar el flujo creativo, de producción, análisis y escala en un solo lugar, dejando atrás el caos de 10 herramientas desconectadas y comunicando el valor de la plataforma bajo el principio: *«La automatización no reemplaza al creador. Le devuelve tiempo para crear.»*
 
 ---
 

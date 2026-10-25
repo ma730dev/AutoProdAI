@@ -1,8 +1,8 @@
-# 💡 Visión Macro: AutoProd — El Sistema Operativo para Canales de Contenido
+# 💡 Visión Macro: AutoProd — El Sistema Operativo para Proyectos de Contenido
 
 > **Definición Oficial de Producto:**  
-> **AutoProd es el sistema operativo para canales de contenido.**  
-> Un espacio donde los creadores y operadores de canales organizan sus proyectos, desarrollan ideas, producen contenido de alta calidad con sus propios recursos, analizan resultados y construyen un workflow de producción que se adapta a su forma de crear.
+> **AutoProd es el sistema operativo para proyectos de contenido.**  
+> Un espacio donde los creadores organizan sus proyectos, desarrollan ideas, producen contenido de alta calidad con sus propios recursos, analizan resultados y construyen un workflow de producción que se adapta a su forma de crear. El Workspace es un espacio abierto que la IA explora para entender el contexto; los canales de YouTube son una integración aparte.
 
 > **Manifiesto de Marca:**  
 > *«La automatización no reemplaza al creador. Le devuelve tiempo para crear.»*  

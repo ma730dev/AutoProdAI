@@ -10,7 +10,7 @@
 
 En AutoProd, la experiencia del creador no debe ser la de lidiar con un chatbot genérico que alucina o improvisa estructuras, ni la de memorizar comandos o tipear textos interminables.
 
-AutoProd es el **sistema operativo para canales de contenido**. Esta funcionalidad resuelve tres pilares esenciales:
+AutoProd es el **sistema operativo para proyectos de contenido**. Esta funcionalidad resuelve tres pilares esenciales:
 1. **Coherencia y Memoria del Canal:** Ya sea que el canal venga importado desde YouTube con el extractor o nazca desde una idea nueva, la estructura de memoria (`InfoCanal/`) es idéntica y predecible.
 2. **Soberanía y Facilidad de Publicación:** En cada proyecto de video, el creador cuenta con su archivo `config_video.md`, listo para copiar y pegar en YouTube Studio con títulos optimizados, ganchos y comentarios de comunidad.
 3. **Control Fluido con Interactive Question Cards (Estilo Antigravity):** Las decisiones complejas (como elegir entre modelos de IA, confirmar carpetas extra o seleccionar temas) se resuelven con tarjetas visuales de 1 solo clic, mostrando con total transparencia el costo estimado en créditos.

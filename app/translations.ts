@@ -23,7 +23,7 @@ export const translations = {
     heroBrandName: "AutoProdAI",
     heroMainHeadline: "Tu canal. Tu contenido.",
     heroMainHeadlineHighlight: "Tu sistema.",
-    heroSubheadline: "El sistema operativo para canales de contenido.",
+    heroSubheadline: "El sistema operativo para proyectos de contenido.",
     heroSubtitle: "Organiza tus ideas, produce tus videos, analiza tus canales y reúne tu workflow en un solo lugar. Más control para crear. Menos tiempo perdido entre herramientas.",
     heroCtaPrimary: "Empezar Gratis",
     heroCtaSecondary: "Ver el Workflow",
@@ -217,7 +217,7 @@ export const translations = {
 
     // Footer
     allRightsReserved: "Todos los derechos reservados.",
-    footerDesc: "El sistema operativo para canales de contenido.",
+    footerDesc: "El sistema operativo para proyectos de contenido.",
     harness: "Herramientas",
 
     // Dashboard Left Sidebar & Navigation

@@ -40,13 +40,13 @@
 ## 1. Resumen Ejecutivo & Visión de Producto
 
 ### 1.1 ¿Qué es AutoProd?
-**AutoProd es el sistema operativo para canales de contenido.**  
+**AutoProd es el sistema operativo para proyectos de contenido.**  
 No es un simple generador de videos asistido por IA, ni un script de automatización superficial, ni un clon de herramientas de edición en la nube. AutoProd es una **estación de trabajo integral (estilo IDE de desarrollo, pero diseñada para creadores y operadores de medios)** que unifica bajo una misma consola reactiva:
-- La memoria histórica, identidad y directivas creativas de múltiples canales.
-- La asistencia agéntica guiada para investigación de temas, guiones y diseño visual.
-- Una mesa de montaje audiovisual multipista (Video Studio) con renderizado nativo.
+- La memoria histórica, identidad y directivas creativas de múltiples proyectos multimedia.
+- La asistencia agéntica guiada para la ejecucion de tareas de produccion de contenido, control del ide o incluso para que sea capaz de guiar al cliente iluminando o resaltando botones y etc, ayudando la UX.
+- Una editor de video profesional (Video Studio).
 - Un pipeline local de subtitulado fonético, síntesis de voz multi-motor y bucles de audio.
-- Integración directa con plataformas de publicación (YouTube Data API v3).
+- Integración directa con plataformas de publicación (YouTube Data API v3, instagram y etc a medida de avance del proyecto).
 
 ### 1.2 Por Qué Falla el Software Actual
 La producción contemporánea para plataformas como YouTube, TikTok y podcasts está fragmentada y quebrada:

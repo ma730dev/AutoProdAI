@@ -53,35 +53,30 @@ No asumas la arquitectura. Navega a `docs/index.md`, lee el contexto de tu tarea
 
 ---
 
-## 📁 TAXONOMÍA Y ORGANIZACIÓN DEL ESPACIO DE TRABAJO (WORKSPACE)
+## 📁 TAXONOMÍA Y ORGANIZACIÓN DEL ESPACIO DE TRABAJO (WORKSPACE-FIRST)
 
-El sistema de archivos de AutoProd se organiza de forma estricta en 3 niveles jerárquicos:
+El Workspace de AutoProd es un **espacio de trabajo abierto y soberano** en el disco del creador. La IA explora dinámicamente lo que existe para deducir contexto, intención y estado de producción sin forzar una jerarquía rígida.
 
 ```
 📁 {workspace}/                                 <-- [NIVEL 0: Raíz del Workspace]
-├── 📁 Recursos/                        (B-roll, clips, proyectos de edición, loops y assets)
-└── 📁 NombreDelCanal/                          <-- [NIVEL 1: CANAL] (Cada carpeta en la raíz es un canal)
-    ├── 📁 InfoCanal/                            <-- [NIVEL 2: MEMORIA Y ADN DEL CANAL] (¡NO es un video!)
-    │   ├── Contexto_canal.md                   (Nicho, audiencia objetivo, tono y directivas)
-    │   ├── Metricas_canal.md                   (Estadísticas y rendimiento de YouTube)
-    │   ├── Historial_canal.md                  (Títulos y tags ya cubiertos para no repetir)
-    │   └── [Recursos Gráficos: logo.jpg, banner.jpg, marca_de_agua.jpg]
-    └── 📁 Titulo_Del_Video/                     <-- [NIVEL 2: PROYECTO DE VIDEO] (Hermanos de InfoCanal)
-        ├── 📁 Guiones/                         <-- [NIVEL 3: Recursos de Producción] (Guion en Markdown)
-        ├── 📁 Letras/                          (Letras y líricas guardadas con el título exacto del audio)
-        ├── 📁 Videos/                          (Metraje bruto, clips y render final .mp4)
-        ├── 📁 Miniatura/                       (Prompts, conceptos y portada final)
-        ├── 📁 Musica/                          (Pistas de audio y música de fondo)
-        └── 📁 Ambiente/                        (Efectos SFX y atmósferas sonoras)
+├── 📁 Recursos/                                <-- [Almacén global: B-roll, clips, proyectos de edición, loops y assets]
+└── 📁 NombreDelProyecto/                       <-- [NIVEL 1: PROYECTO O LÍNEA EDITORIAL] (Espacio libre del creador)
+    ├── [Archivos de notas / contexto / guiones]
+    └── 📁 Pieza_O_Subproyecto/                 <-- [NIVEL 2: PIEZA DE CONTENIDO / PRODUCCIÓN] (Convención modular)
+        ├── 📁 Guiones/                         <-- [Convención modular sugerida: Guion en Markdown]
+        ├── 📁 Letras/                          <-- [Letras nombrando exactamente el archivo de audio]
+        ├── 📁 Videos/                          <-- [Metraje bruto, clips y render final .mp4]
+        ├── 📁 Miniatura/                       <-- [Prompts, conceptos y portada final]
+        ├── 📁 Musica/                          <-- [Pistas de audio y música de fondo]
+        └── 📁 Ambiente/                        <-- [Efectos SFX y atmósferas sonoras]
 ```
 
-**Reglas de Reconocimiento y Filosofía de Organización:**
-- **`Recursos/`:** Carpeta en la raíz del Workspace (**Nivel 0**). Almacén global y compartido de clips auxiliares (B-roll), proyectos de edición, loops y assets visuales/auditivos para el montaje en Video Studio.
-- **Canal:** Carpeta de **Nivel 1** en la raíz del Workspace (hermana de `Recursos/`).
-- **`InfoCanal/`:** Carpeta de **Nivel 2** exclusiva para la memoria, directivas e identidad del canal. **NUNCA** es un video.
-- **Proyecto de Video:** Carpeta de **Nivel 2** dentro de un canal (hermana de `InfoCanal/`).
-- **Plantilla Base Modular de Video (Nivel 3):** Las subcarpetas (`Guiones/`, `Letras/`, `Videos/`, `Miniatura/`, `Musica/`, `Ambiente/`) constituyen la estructura base recomendada de producción de cada video:
-  - **`Letras/`:** Contiene las letras y guiones líricos nombrados **con el título exacto de la pista de audio a utilizar** (ej: `Cancion.txt` para `Cancion.mp3`), permitiendo el auto-matching de subtitulado asistido.
+**Principios de Convivencia y Flexibilidad:**
+- **Soberanía y Adaptabilidad:** El creador organiza sus carpetas y proyectos a su manera. La IA nunca debe borrar, sobreescribir ni imponer carpetas reservadas si el usuario no las solicita.
+- **`Recursos/`:** Carpeta en la raíz del Workspace (**Nivel 0**). Almacén global y compartido de clips auxiliares (B-roll), proyectos de edición, loops y assets visuales/auditivos para el montaje multimedia.
+- **Proyectos de Contenido (Nivel 1):** Carpetas en la raíz del Workspace que representan series, marcas, canales o líneas editoriales. No están obligadas a tener una estructura fija.
+- **Convención Modular Sugerida (Niveles 2 y 3):** Las subcarpetas (`Guiones/`, `Letras/`, `Videos/`, `Miniatura/`, `Musica/`, `Ambiente/`) constituyen una plantilla base de alta productividad recomendada para piezas individuales de video o música, pero son **sugeridas**, no una imposición del sistema.
+  - **`Letras/`:** Si se utiliza para producción musical o lírica, se recomienda guardar el texto con el nombre exacto de la pista de audio (`Cancion.txt` para `Cancion.mp3`) para facilitar el auto-matching de subtítulos.
 
 
 ---

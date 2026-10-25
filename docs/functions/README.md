@@ -49,8 +49,8 @@ AutoProd es el **sistema operativo para creadores de contenido**. Opera bajo una
 ```
 
 ### Rutas Rápidas (Fast-Paths de 0 Tokens):
-1. **`capacidades_sistema` (`< 15ms`):** Responde de inmediato consultas de bienvenida, qué puede hacer AutoProd y estado general, listando los 4 pilares (`CREA`, `PRODUCE`, `ANALIZA`, `ESCALA`) y los canales físicos en disco sin tocar LLMs ni arriesgar errores 404.
-2. **`listar_canales_disco`:** Inspección en tiempo real del directorio raíz del workspace.
+1. **`capacidades_sistema` (`< 15ms`):** Responde de inmediato consultas de bienvenida, qué puede hacer AutoProd y estado general, listando los 4 pilares (`CREA`, `PRODUCE`, `ANALIZA`, `ESCALA`) y los proyectos físicos en disco sin tocar LLMs ni arriesgar errores 404.
+2. **`listar_proyectos_workspace`:** Inspección en tiempo real del directorio raíz del workspace y proyectos de contenido en disco.
 3. **`consultar_proyecto_video`:** Consulta del proyecto en curso en la base de datos.
 4. **`listar_proyectos_recientes`:** Historial de proyectos de video activos.
 5. **`estado_sistema`:** Verificación de conectividad del motor local FastAPI (`localhost:8000`).
@@ -67,10 +67,10 @@ Control absoluto y soberano del disco y sistema de archivos.
 | Acción (`action`) | Parámetros | Descripción |
 |---|---|---|
 | `listar` | `path` | Inspección segura de directorios (retorna `{ exists: false }` si no existe, sin errores 404). |
-| `crear_carpetas` | `paths: string[]` | Creación de directorios en bloque (canales, proyectos de video, carpetas modulares) con límites por plan. |
-| `eliminar_carpetas` | `paths: string[]` | Eliminación segura de carpetas en disco con protección de carpetas reservadas. |
-| `leer_archivo` | `path` | Lectura de guiones, configuraciones y archivos de texto (máx 8000 caracteres). |
-| `guardar_archivo` | `path`, `content`, `overwrite` | Escritura atómica de guiones, ideas o configuraciones. |
+| `crear_carpetas` | `paths: string[]`, `path?: string` | Creación de directorios individuales o en bloque (proyectos, piezas de contenido, carpetas modulares) sin estructuras forzadas. |
+| `eliminar_carpetas` | `paths: string[]` | Eliminación segura de carpetas en disco con protección de la raíz del workspace. |
+| `leer_archivo` | `path` | Lectura de guiones, notas, briefings y archivos de texto (máx 8000 caracteres). |
+| `guardar_archivo` | `path`, `content`, `overwrite` | Escritura atómica de notas, guiones, ideas o configuraciones. |
 | `default` | — | Información del workspace predeterminado configurado. |
 
 ---

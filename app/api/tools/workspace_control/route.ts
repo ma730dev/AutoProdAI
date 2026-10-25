@@ -3,11 +3,9 @@ import path from 'path';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import { getWorkspacePath } from '@/lib/setup/detector';
-import { db as prisma } from '@/src/prisma/db';
-import { PLANS_CONFIG } from '@/lib/pricing-config';
 
 // ──────────────────────────────────────────────
-// Carpetas reservadas del sistema (Protegidas)
+// Carpetas reservadas del sistema (Protegidas en la raíz del workspace)
 // ──────────────────────────────────────────────
 const SYSTEM_RESERVED_FOLDERS = [
   'recursos', 'assets', 'node_modules', 'bin', 'public', 'dist', 'build',
@@ -15,26 +13,65 @@ const SYSTEM_RESERVED_FOLDERS = [
   'controlador', 'prisma', 'src', 'app', 'components', 'lib'
 ];
 
-function sanitizeFolderName(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, ' - ').replace(/\s+/g, ' ').trim();
-}
-
 const ALLOWED_TEXT_EXTENSIONS = [
   '.md', '.markdown', '.txt',
   '.srt', '.vtt', '.ass', '.ssa', '.lrc',
   '.json', '.csv', '.tsv', '.xml', '.yaml', '.yml'
 ];
 
+function sanitizeSegment(name: string): string {
+  return name.replace(/[:*?"<>|]/g, ' - ').replace(/\s+/g, ' ').trim();
+}
+
+function toPosix(p: string): string {
+  return p.replace(/\\/g, '/');
+}
+
+/**
+ * Resuelve una ruta (relativa o absoluta) garantizando que quede DENTRO del workspace.
+ * Las rutas relativas se interpretan segmento a segmento ("Proyecto/Guiones" => carpeta anidada).
+ * Retorna null si la ruta intenta salirse del workspace (path traversal) o es inválida.
+ */
+function resolveInsideWorkspace(wsRoot: string, raw: string): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const root = path.resolve(wsRoot);
+
+  let candidate: string;
+  if (path.isAbsolute(raw)) {
+    candidate = path.resolve(raw);
+  } else {
+    const segments = raw.split(/[\\/]+/).filter(s => s && s !== '.');
+    if (segments.some(s => s === '..')) return null;
+    const cleaned = segments.map(sanitizeSegment).filter(Boolean);
+    candidate = path.resolve(root, ...cleaned);
+  }
+
+  const rel = path.relative(root, candidate);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return candidate;
+}
+
+function collectPaths(body: any, keys: string[]): string[] {
+  const out: string[] = [];
+  for (const key of keys) {
+    const val = body[key];
+    if (Array.isArray(val)) out.push(...val.filter((v: any) => typeof v === 'string'));
+    else if (typeof val === 'string' && val.trim()) out.push(val);
+  }
+  return out;
+}
+
 // ──────────────────────────────────────────────
 // POST /api/tools/workspace_control
-// Controlador unificado del dominio WORKSPACE_FS
+// Controlador unificado del dominio WORKSPACE_FS.
+// El workspace es un espacio abierto: la IA lo explora, entiende su contenido
+// y crea, lee o modifica lo que necesite. No impone estructura ni jerarquía.
 // ──────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const accion = String(body.accion || body.action || body.tipo || 'listar').toLowerCase().trim();
     const userContext = body._userContext || {};
-    const userId = userContext.id || body.userId;
 
     // 1. Determinar raíz efectiva del workspace
     let wsRoot = (userContext.workspacePath && typeof userContext.workspacePath === 'string' && userContext.workspacePath.trim() !== '')
@@ -54,20 +91,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const outsideError = (p: string) => NextResponse.json({
+      error: `La ruta "${p}" queda fuera del workspace. Usa rutas relativas al workspace (ej. "MiProyecto/Guiones").`
+    }, { status: 400 });
+
     // ──────────────────────────────────────────────
-    // ACCIÓN: DEFAULT (Ruta base y canales detectados)
+    // ACCIÓN: DEFAULT (Ruta base y carpetas de primer nivel)
     // ──────────────────────────────────────────────
     if (accion === 'default' || accion === 'workspace_default') {
       const entries = fs.existsSync(wsRoot) ? fs.readdirSync(wsRoot, { withFileTypes: true }) : [];
-      const channels = entries
+      const folders = entries
         .filter(e => e.isDirectory() && !e.name.startsWith('.') && !SYSTEM_RESERVED_FOLDERS.includes(e.name.toLowerCase()))
         .map(e => e.name);
 
       return NextResponse.json({
         success: true,
-        workspace_path: wsRoot,
-        total_channels: channels.length,
-        channels
+        workspace_path: toPosix(wsRoot),
+        total_folders: folders.length,
+        folders
       });
     }
 
@@ -80,12 +121,11 @@ export async function POST(req: NextRequest) {
 
       let targetDir = wsRoot;
       const requestedPath = body.base_path || body.path || body.target_path || body.ruta || '';
-      const channelName = body.channel_name || body.channel || body.canal || '';
 
       if (requestedPath && requestedPath !== '.' && requestedPath !== '/') {
-        targetDir = path.isAbsolute(requestedPath) ? requestedPath : path.join(wsRoot, requestedPath);
-      } else if (channelName) {
-        targetDir = path.join(wsRoot, sanitizeFolderName(channelName));
+        const resolved = resolveInsideWorkspace(wsRoot, requestedPath);
+        if (!resolved) return outsideError(requestedPath);
+        targetDir = resolved;
       }
 
       if (!fs.existsSync(targetDir)) {
@@ -97,23 +137,22 @@ export async function POST(req: NextRequest) {
           success: false,
           exists: false,
           message: `La carpeta "${path.basename(targetDir)}" no existe físicamente en el workspace.`,
-          workspace_root: wsRoot,
+          workspace_root: toPosix(wsRoot),
           carpetas_existentes: existingFolders
         });
       }
 
       if (isFlat) {
-        // Recorrido plano
         const folders: any[] = [];
         const files: any[] = [];
 
-        function walk(current: string, currentDepth: number) {
+        const walk = (current: string, currentDepth: number) => {
           if (currentDepth > depth) return;
           try {
             const items = fs.readdirSync(current, { withFileTypes: true });
             for (const item of items) {
               if (item.name.startsWith('.')) continue;
-              const fullP = path.join(current, item.name).replace(/\\/g, '/');
+              const fullP = toPosix(path.join(current, item.name));
               const entry = {
                 nombre: item.name,
                 ruta: fullP,
@@ -128,174 +167,82 @@ export async function POST(req: NextRequest) {
               }
             }
           } catch {}
-        }
+        };
 
         walk(targetDir, 1);
 
         return NextResponse.json({
           success: true,
-          base_path: targetDir.replace(/\\/g, '/'),
+          base_path: toPosix(targetDir),
           total_carpetas: folders.length,
           total_archivos: files.length,
           carpetas: folders,
           archivos: files
         });
-      } else {
-        // Recorrido jerárquico (Árbol)
-        function buildTree(current: string, currentDepth: number, maxD: number = 3): any[] {
-          if (currentDepth > maxD) return [];
-          const tree: any[] = [];
-          try {
-            const items = fs.readdirSync(current, { withFileTypes: true });
-            for (const item of items) {
-              if (item.name.startsWith('.')) continue;
-              const node: any = {
-                name: item.name,
-                path: path.join(current, item.name).replace(/\\/g, '/'),
-                type: item.isDirectory() ? 'directory' : 'file'
-              };
-              if (item.isDirectory()) {
-                node.children = buildTree(path.join(current, item.name), currentDepth + 1, maxD);
-              }
-              tree.push(node);
-            }
-          } catch {}
-          return tree;
-        }
-
-        const tree = buildTree(targetDir, 0);
-        return NextResponse.json({
-          success: true,
-          workspace: targetDir.replace(/\\/g, '/'),
-          tree
-        });
       }
+
+      const buildTree = (current: string, currentDepth: number, maxD: number = 3): any[] => {
+        if (currentDepth > maxD) return [];
+        const tree: any[] = [];
+        try {
+          const items = fs.readdirSync(current, { withFileTypes: true });
+          for (const item of items) {
+            if (item.name.startsWith('.')) continue;
+            const node: any = {
+              name: item.name,
+              path: toPosix(path.join(current, item.name)),
+              type: item.isDirectory() ? 'directory' : 'file'
+            };
+            if (item.isDirectory()) {
+              node.children = buildTree(path.join(current, item.name), currentDepth + 1, maxD);
+            }
+            tree.push(node);
+          }
+        } catch {}
+        return tree;
+      };
+
+      return NextResponse.json({
+        success: true,
+        workspace: toPosix(targetDir),
+        tree: buildTree(targetDir, 0)
+      });
     }
 
     // ──────────────────────────────────────────────
-    // ACCIÓN: CREAR_CARPETAS (Carpetas, Canales o Proyectos)
+    // ACCIÓN: CREAR_CARPETAS (carpetas anidadas libres dentro del workspace)
     // ──────────────────────────────────────────────
-    if (accion === 'crear' || accion === 'crear_carpetas' || accion === 'crear_canal') {
-      const channelName = body.channel_name || body.channel || body.canal || body.nombre_canal || null;
-      let targetParent = wsRoot;
+    if (accion === 'crear' || accion === 'crear_carpetas') {
+      const candidates = collectPaths(body, [
+        'paths', 'path', 'folders', 'carpetas', 'folder_names', 'folder_name', 'nombre_carpeta', 'name'
+      ]);
 
-      if (body.target_path && body.target_path !== '.' && body.target_path !== '/') {
-        targetParent = path.isAbsolute(body.target_path) ? body.target_path : path.join(wsRoot, body.target_path);
-      } else if (channelName && body.folder_name) {
-        targetParent = path.join(wsRoot, sanitizeFolderName(channelName));
-      }
-
-      // Recolectar nombres de carpetas
-      let candidateFolders: string[] = [];
-      if (Array.isArray(body.folders)) candidateFolders.push(...body.folders);
-      if (Array.isArray(body.carpetas)) candidateFolders.push(...body.carpetas);
-      if (Array.isArray(body.folder_names)) candidateFolders.push(...body.folder_names);
-      if (body.folder_name) candidateFolders.push(body.folder_name);
-      if (body.nombre_carpeta) candidateFolders.push(body.nombre_carpeta);
-      if (body.name && !channelName) candidateFolders.push(body.name);
-
-      // Si solo vino channel_name sin folders específicos, se crea la carpeta del canal en la raíz
-      if (candidateFolders.length === 0 && channelName) {
-        candidateFolders.push(channelName);
-      }
-
-      if (candidateFolders.length === 0 && Array.isArray(body.paths)) {
-        candidateFolders = body.paths;
-      }
-
-      if (candidateFolders.length === 0) {
+      if (candidates.length === 0) {
         return NextResponse.json({
-          error: "Debes especificar al menos el nombre de la carpeta o canal a crear ('folder_name' o 'folders')."
+          error: "Debes especificar al menos una carpeta a crear en 'paths' (ej. [\"MiProyecto/Guiones\"])."
         }, { status: 400 });
       }
 
-      // VALIDACIÓN DE LÍMITES DE PLAN (si se crea carpeta directamente en la raíz)
-      const isTargetRoot = path.resolve(targetParent) === path.resolve(wsRoot);
-      if (isTargetRoot && userId) {
-        try {
-          const userRecord = await prisma.user.findUnique({
-            where: { id: userId },
-            include: { subscription: { include: { plan: { include: { limits: true } } } } }
-          });
-          const planName = (userRecord?.subscription?.plan?.name as 'FREE' | 'STARTER' | 'PRO' | 'ENTERPRISE') || 'FREE';
-          const planConfig = PLANS_CONFIG[planName] || PLANS_CONFIG.FREE;
-          const maxChannels = userRecord?.subscription?.plan?.limits?.maxChannels ?? planConfig.maxChannels;
-          const isAdmin = userRecord?.role === 'ADMIN';
+      const created: string[] = [];
+      const alreadyExisted: string[] = [];
 
-          if (!isAdmin && maxChannels < 9999) {
-            const rootEntries = fs.readdirSync(wsRoot, { withFileTypes: true });
-            const currentRootDirs = rootEntries
-              .filter(e => e.isDirectory() && !e.name.startsWith('.') && !SYSTEM_RESERVED_FOLDERS.includes(e.name.toLowerCase()))
-              .map(e => e.name);
-
-            const isCreatingNewRoot = candidateFolders.some(f => !currentRootDirs.includes(sanitizeFolderName(f)));
-            if (isCreatingNewRoot && currentRootDirs.length >= maxChannels) {
-              return NextResponse.json({
-                error: `[LÍMITE DE PLAN]: Tu plan actual ${planConfig.displayName} solo permite hasta ${maxChannels} canal(es)/carpeta(s) principales. Ya tienes ${currentRootDirs.length} (${currentRootDirs.join(', ')}). Actualiza tu plan para crear más.`,
-                requiresUpgrade: true
-              }, { status: 402 });
-            }
-          }
-        } catch (planErr: any) {
-          console.warn('[WorkspaceControl] Error al verificar límites de plan:', planErr.message);
+      for (const raw of candidates) {
+        const resolved = resolveInsideWorkspace(wsRoot, raw);
+        if (!resolved) return outsideError(raw);
+        if (fs.existsSync(resolved)) {
+          alreadyExisted.push(toPosix(resolved));
+          continue;
         }
-      }
-
-      const createdPaths: string[] = [];
-      const subfolders = Array.isArray(body.subfolders) ? body.subfolders : [];
-
-      for (const rawName of candidateFolders) {
-        if (!rawName || typeof rawName !== 'string') continue;
-        const cleanName = sanitizeFolderName(rawName);
-        if (!cleanName) continue;
-
-        const fullFolderPath = path.isAbsolute(rawName) ? rawName : path.join(targetParent, cleanName);
-        fs.mkdirSync(fullFolderPath, { recursive: true });
-        createdPaths.push(fullFolderPath.replace(/\\/g, '/'));
-
-        // Si se especificaron subcarpetas (ej: Guiones, Videos, Miniatura, Musica, Ambiente)
-        for (const sub of subfolders) {
-          if (sub && typeof sub === 'string') {
-            fs.mkdirSync(path.join(fullFolderPath, sanitizeFolderName(sub)), { recursive: true });
-          }
-        }
-
-        // Si la carpeta creada está directamente en la raíz (Nivel 1: Canal o Proyecto), inicializar InfoCanal base si no existe
-        if (isTargetRoot) {
-          const infoCanal = path.join(fullFolderPath, 'InfoCanal');
-          if (!fs.existsSync(infoCanal)) {
-            fs.mkdirSync(infoCanal, { recursive: true });
-            const ctxFile = path.join(infoCanal, 'Contexto_canal.md');
-            if (!fs.existsSync(ctxFile)) {
-              const tematica = body.tematica || body.niche || body.tema || cleanName;
-              fs.writeFileSync(ctxFile, `# Identidad del Canal: ${cleanName}\n\n- **Nicho / Enfoque:** ${tematica}\n- **Creado el:** ${new Date().toLocaleDateString()}\n- **Directivas:** Producción de contenido original.\n`, 'utf-8');
-            }
-          }
-
-          // Registrar en la BD si hay userId
-          if (userId) {
-            try {
-              await prisma.channel.upsert({
-                where: { id: fullFolderPath }, // Fallback id
-                update: { localPath: fullFolderPath, folderStatus: 'CREATED' },
-                create: {
-                  name: cleanName,
-                  userId,
-                  localPath: fullFolderPath,
-                  niche: body.tematica || body.niche || cleanName,
-                  folderStatus: 'CREATED'
-                }
-              }).catch(() => {});
-            } catch {}
-          }
-        }
+        fs.mkdirSync(resolved, { recursive: true });
+        created.push(toPosix(resolved));
       }
 
       return NextResponse.json({
         success: true,
-        message: `Se crearon ${createdPaths.length} carpeta(s) exitosamente.`,
-        created: createdPaths,
-        base_path: targetParent.replace(/\\/g, '/')
+        message: `Se crearon ${created.length} carpeta(s)${alreadyExisted.length ? ` (${alreadyExisted.length} ya existían)` : ''}.`,
+        created,
+        already_existed: alreadyExisted.length > 0 ? alreadyExisted : undefined,
+        workspace_root: toPosix(wsRoot)
       });
     }
 
@@ -303,38 +250,29 @@ export async function POST(req: NextRequest) {
     // ACCIÓN: ELIMINAR_CARPETAS
     // ──────────────────────────────────────────────
     if (accion === 'eliminar' || accion === 'eliminar_carpetas' || accion === 'borrar') {
-      const candidatePaths: string[] = [];
-
-      if (Array.isArray(body.paths)) candidatePaths.push(...body.paths);
-      if (Array.isArray(body.rutas)) candidatePaths.push(...body.rutas);
-      if (Array.isArray(body.folders)) candidatePaths.push(...body.folders);
-      if (Array.isArray(body.carpetas)) candidatePaths.push(...body.carpetas);
-      if (body.path) candidatePaths.push(body.path);
-      if (body.ruta) candidatePaths.push(body.ruta);
-      if (body.folder_name) candidatePaths.push(body.folder_name);
-
-      if (body.channel_name && body.folder_name) {
-        candidatePaths.push(path.join(wsRoot, sanitizeFolderName(body.channel_name), sanitizeFolderName(body.folder_name)));
-      } else if (body.channel_name && candidatePaths.length === 0) {
-        candidatePaths.push(path.join(wsRoot, sanitizeFolderName(body.channel_name)));
-      }
+      const candidates = collectPaths(body, ['paths', 'rutas', 'folders', 'carpetas', 'path', 'ruta', 'folder_name']);
 
       const deleted: string[] = [];
       const errors: string[] = [];
+      const rootResolved = path.resolve(wsRoot);
 
-      for (const p of candidatePaths) {
-        if (!p || typeof p !== 'string') continue;
-        const target = path.isAbsolute(p) ? p : path.join(wsRoot, p);
-        const resolved = path.resolve(target);
-
-        // Protección estricta: No permitir borrar raíz del workspace ni carpetas de sistema
-        if (resolved === path.resolve(wsRoot) || resolved === path.resolve(process.cwd())) {
-          errors.push(`Operación bloqueada: No se puede eliminar la raíz del workspace (${p}).`);
+      for (const raw of candidates) {
+        const resolved = resolveInsideWorkspace(wsRoot, raw);
+        if (!resolved) {
+          errors.push(`Operación bloqueada: "${raw}" queda fuera del workspace.`);
           continue;
         }
 
+        // Protección estricta: no permitir borrar la raíz del workspace
+        if (resolved === rootResolved) {
+          errors.push(`Operación bloqueada: No se puede eliminar la raíz del workspace (${raw}).`);
+          continue;
+        }
+
+        // Las carpetas reservadas solo se protegen en el primer nivel del workspace
+        const isTopLevel = path.dirname(resolved) === rootResolved;
         const baseName = path.basename(resolved).toLowerCase();
-        if (SYSTEM_RESERVED_FOLDERS.includes(baseName)) {
+        if (isTopLevel && SYSTEM_RESERVED_FOLDERS.includes(baseName)) {
           errors.push(`Operación bloqueada: "${baseName}" es una carpeta reservada del sistema.`);
           continue;
         }
@@ -342,9 +280,9 @@ export async function POST(req: NextRequest) {
         if (fs.existsSync(resolved)) {
           try {
             fs.rmSync(resolved, { recursive: true, force: true });
-            deleted.push(resolved.replace(/\\/g, '/'));
+            deleted.push(toPosix(resolved));
           } catch (delErr: any) {
-            errors.push(`Error eliminando "${p}": ${delErr.message}`);
+            errors.push(`Error eliminando "${raw}": ${delErr.message}`);
           }
         }
       }
@@ -366,7 +304,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Debes proporcionar la ruta del archivo a leer.' }, { status: 400 });
       }
 
-      const targetFile = path.isAbsolute(rawPath) ? rawPath : path.join(wsRoot, rawPath);
+      const targetFile = resolveInsideWorkspace(wsRoot, rawPath);
+      if (!targetFile) return outsideError(rawPath);
+
       if (!fs.existsSync(targetFile) || !fs.statSync(targetFile).isFile()) {
         return NextResponse.json({ error: `El archivo "${path.basename(targetFile)}" no existe.` }, { status: 404 });
       }
@@ -379,7 +319,7 @@ export async function POST(req: NextRequest) {
       const content = await fsPromises.readFile(targetFile, 'utf-8');
       return NextResponse.json({
         success: true,
-        path: targetFile.replace(/\\/g, '/'),
+        path: toPosix(targetFile),
         nombre: path.basename(targetFile),
         content
       });
@@ -401,9 +341,16 @@ export async function POST(req: NextRequest) {
         rawPath += '.md';
       }
 
-      const targetFile = path.isAbsolute(rawPath) ? rawPath : path.join(wsRoot, rawPath);
-      const parentDir = path.dirname(targetFile);
+      const targetFile = resolveInsideWorkspace(wsRoot, rawPath);
+      if (!targetFile) return outsideError(rawPath);
 
+      if (body.overwrite === false && fs.existsSync(targetFile)) {
+        return NextResponse.json({
+          error: `El archivo "${path.basename(targetFile)}" ya existe y overwrite=false. Elige otro nombre o permite sobreescribir.`
+        }, { status: 409 });
+      }
+
+      const parentDir = path.dirname(targetFile);
       if (!fs.existsSync(parentDir)) {
         fs.mkdirSync(parentDir, { recursive: true });
       }
@@ -413,7 +360,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         message: `Archivo "${path.basename(targetFile)}" guardado correctamente.`,
-        path: targetFile.replace(/\\/g, '/')
+        path: toPosix(targetFile)
       });
     }
 
